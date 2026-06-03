@@ -110,7 +110,18 @@ admin.allocate_capital("Vol Arb", 150_000)
 The client keeps the same friendly method names (`buy`, `sell`, `short`, …) but
 each one is now an authenticated HTTP call, not a direct Alpaca call.
 
-### 4. React dashboard
+### 4. Admin portal
+A self-contained web UI served by the backend at `GET /portal`
+(`backend/app/portal/index.html`, vanilla JS — no build step). It logs in with a
+shared username/password (`ADMIN_PORTAL_USERNAME`/`ADMIN_PORTAL_PASSWORD`,
+default `elbow`/`grease`) → a portal token, and drives the `/admin/*` API to
+create pods, create rqfc accounts (Supabase Auth user + trader), set Alpaca
+credentials, allocate capital, and assign traders. It lives on the backend (not
+the public GitHub Pages dashboard) because those actions need the service-role
+key. `/admin/*` accepts the portal token **or** a Supabase admin JWT, so the
+portal and the Python admin client are interchangeable.
+
+### 5. React dashboard
 Read-only, public. Already reads `pods`, `members` (view), `trades`,
 `positions`, `nav_history`, `metrics` from Supabase. No changes needed beyond
 the schema rename already applied.

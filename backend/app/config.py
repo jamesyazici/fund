@@ -28,6 +28,12 @@ class Settings:
             o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()
         ]
 
+        # Admin portal login. Defaults to the requested elbow/grease; override
+        # in production via env. Portal tokens are signed with this secret.
+        self.admin_portal_username = os.environ.get("ADMIN_PORTAL_USERNAME", "elbow")
+        self.admin_portal_password = os.environ.get("ADMIN_PORTAL_PASSWORD", "grease")
+        self.admin_portal_secret = os.environ.get("ADMIN_PORTAL_SECRET") or self.supabase_jwt_secret
+
 
 def _require(key: str) -> str:
     val = os.environ.get(key)

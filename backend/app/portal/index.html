@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>RQFC Admin Portal</title>
+<style>
+  :root { --bg:#0b0d12; --panel:#151922; --panel2:#1c2230; --line:#262d3d;
+          --text:#e6e9ef; --muted:#8b93a7; --accent:#6366f1; --green:#34d399; --red:#f87171; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:14px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  h1,h2,h3 { margin:0 0 .5rem; font-weight:650; }
+  a { color:var(--accent); }
+  .muted { color:var(--muted); }
+  .row { display:flex; gap:.5rem; flex-wrap:wrap; align-items:center; }
+  input, select, button {
+    font:inherit; color:var(--text); background:var(--panel2);
+    border:1px solid var(--line); border-radius:8px; padding:.5rem .6rem; }
+  input::placeholder { color:var(--muted); }
+  button { background:var(--accent); border-color:var(--accent); color:#fff;
+           cursor:pointer; font-weight:600; }
+  button.secondary { background:var(--panel2); color:var(--text); border-color:var(--line); }
+  button.danger { background:transparent; color:var(--red); border-color:var(--red); }
+  button:hover { filter:brightness(1.08); }
+  label { display:block; font-size:12px; color:var(--muted); margin:.4rem 0 .15rem; }
+  .wrap { max-width:1040px; margin:0 auto; padding:1.5rem; }
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:14px;
+           padding:1.1rem 1.2rem; margin-bottom:1.2rem; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:.6rem; }
+  table { width:100%; border-collapse:collapse; }
+  th,td { text-align:left; padding:.5rem .4rem; border-bottom:1px solid var(--line); font-size:13px; }
+  th { color:var(--muted); font-weight:500; }
+  .tag { font-size:11px; padding:.1rem .45rem; border-radius:999px; border:1px solid var(--line); }
+  .tag.ok { color:var(--green); border-color:#2f5d4b; }
+  .tag.no { color:var(--muted); }
+  .tag.admin { color:var(--accent); border-color:#3b3f7a; }
+  .tabs { display:flex; gap:.4rem; margin-bottom:1rem; }
+  .tabs button { background:var(--panel2); color:var(--muted); border-color:var(--line); }
+  .tabs button.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .topbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:1.2rem; }
+  .hidden { display:none; }
+  #toast { position:fixed; bottom:1rem; right:1rem; max-width:380px; padding:.7rem 1rem;
+           border-radius:10px; background:var(--panel2); border:1px solid var(--line);
+           box-shadow:0 8px 30px #0008; opacity:0; transform:translateY(8px);
+           transition:.2s; white-space:pre-wrap; }
+  #toast.show { opacity:1; transform:translateY(0); }
+  #toast.err { border-color:var(--red); color:var(--red); }
+  #toast.ok { border-color:var(--green); color:var(--green); }
+  .center { min-height:100vh; display:grid; place-items:center; }
+  .login { width:320px; }
+  fieldset { border:1px solid var(--line); border-radius:10px; margin:0 0 .8rem; padding:.8rem; }
+  legend { color:var(--muted); font-size:12px; padding:0 .35rem; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginView" class="center">
+  <div class="panel login">
+    <h1>RQFC Admin</h1>
+    <p class="muted" style="margin-top:0">Sign in to manage pods & traders.</p>
+    <label>Username</label>
+    <input id="username" autocomplete="username" placeholder="username" style="width:100%" />
+    <label>Password</label>
+    <input id="password" type="password" autocomplete="current-password" placeholder="password" style="width:100%" />
+    <button style="width:100%; margin-top:.8rem" onclick="login()">Sign in</button>
+  </div>
+</div>
+
+<!-- APP -->
+<div id="appView" class="wrap hidden">
+  <div class="topbar">
+    <h1>RQFC Admin Portal</h1>
+    <button class="secondary" onclick="logout()">Sign out</button>
+  </div>
+
+  <div class="tabs">
+    <button data-tab="pods" class="active" onclick="showTab('pods')">Pods</button>
+    <button data-tab="traders" onclick="showTab('traders')">Traders</button>
+    <button data-tab="members" onclick="showTab('members')">Assignments</button>
+  </div>
+
+  <!-- PODS -->
+  <section id="tab-pods">
+    <div class="panel">
+      <h2>Create pod</h2>
+      <div class="grid2">
+        <div><label>Name</label><input id="pName" placeholder="Alpha Equities" /></div>
+        <div><label>Asset class</label>
+          <select id="pAsset">
+            <option value="equities">equities</option>
+            <option value="options">options</option>
+            <option value="fixed_income">fixed_income</option>
+            <option value="crypto">crypto</option>
+            <option value="fx">fx</option>
+            <option value="futures">futures</option>
+          </select></div>
+        <div><label>Benchmark</label><input id="pBench" value="SPY" /></div>
+        <div><label>Allocated capital ($)</label><input id="pCapital" type="number" value="100000" /></div>
+      </div>
+      <label>Description</label><input id="pDesc" style="width:100%" placeholder="optional" />
+      <fieldset style="margin-top:.8rem">
+        <legend>Alpaca paper credentials (optional — else backend fallback keys are used)</legend>
+        <div class="grid2">
+          <div><label>API key</label><input id="pKey" placeholder="PK..." /></div>
+          <div><label>API secret</label><input id="pSecret" type="password" placeholder="secret" /></div>
+        </div>
+        <label>Account id (Broker API, optional)</label><input id="pAcct" style="width:100%" />
+      </fieldset>
+      <button onclick="createPod()">Create pod</button>
+    </div>
+
+    <div class="panel">
+      <h2>Pods</h2>
+      <table id="podsTable"><thead><tr>
+        <th>Name</th><th>Class</th><th>Capital</th><th>Alpaca</th><th>Actions</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+  </section>
+
+  <!-- TRADERS -->
+  <section id="tab-traders" class="hidden">
+    <div class="panel">
+      <h2>Create rqfc account</h2>
+      <div class="grid2">
+        <div><label>Display name</label><input id="tName" placeholder="Alice Chen" /></div>
+        <div><label>Email (login)</label><input id="tEmail" placeholder="alice@rqfc.club" /></div>
+        <div><label>Password</label><input id="tPass" type="password" placeholder="temporary password" /></div>
+        <div><label>Role</label>
+          <select id="tAdmin"><option value="false">trader</option><option value="true">admin</option></select></div>
+      </div>
+      <button style="margin-top:.6rem" onclick="createTrader()">Create account</button>
+    </div>
+
+    <div class="panel">
+      <h2>Traders</h2>
+      <table id="tradersTable"><thead><tr>
+        <th>Name</th><th>Trader ID</th><th>Role</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+  </section>
+
+  <!-- MEMBERSHIPS -->
+  <section id="tab-members" class="hidden">
+    <div class="panel">
+      <h2>Assign trader to pod</h2>
+      <div class="row">
+        <div><label>Pod</label><select id="mPod"></select></div>
+        <div><label>Trader</label><select id="mTrader"></select></div>
+        <div><label>Role</label><select id="mRole"><option>trader</option><option>pm</option></select></div>
+        <div style="align-self:end"><button onclick="assign()">Assign</button></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Current assignments</h2>
+      <div class="row" style="margin-bottom:.6rem">
+        <label style="margin:0">Filter pod</label>
+        <select id="mFilter" onchange="loadMemberships()"><option value="">All pods</option></select>
+      </div>
+      <table id="memsTable"><thead><tr>
+        <th>Pod</th><th>Trader</th><th>Role</th><th></th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+  </section>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const TKEY = 'rqfc_portal_token';
+let token = localStorage.getItem(TKEY);
+let pods = [], traders = [];
+
+function toast(msg, kind='ok') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'show ' + kind;
+  setTimeout(() => t.className = '', 3500);
+}
+
+async function api(method, path, body) {
+  const res = await fetch(path, {
+    method,
+    headers: Object.assign({'Content-Type':'application/json'},
+                           token ? {'Authorization':'Bearer '+token} : {}),
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (res.status === 401) { logout(); throw new Error('Session expired — sign in again.'); }
+  const data = res.headers.get('content-type')?.includes('json') ? await res.json() : null;
+  if (!res.ok) throw new Error((data && data.detail) || res.statusText);
+  return data;
+}
+
+async function login() {
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value;
+  try {
+    const r = await api('POST', '/admin/login', {username, password});
+    token = r.token; localStorage.setItem(TKEY, token);
+    enterApp();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+function logout() {
+  token = null; localStorage.removeItem(TKEY);
+  document.getElementById('appView').classList.add('hidden');
+  document.getElementById('loginView').classList.remove('hidden');
+}
+
+function enterApp() {
+  document.getElementById('loginView').classList.add('hidden');
+  document.getElementById('appView').classList.remove('hidden');
+  refreshAll();
+}
+
+function showTab(name) {
+  ['pods','traders','members'].forEach(t => {
+    document.getElementById('tab-'+t).classList.toggle('hidden', t !== name);
+    document.querySelector(`.tabs button[data-tab="${t}"]`).classList.toggle('active', t === name);
+  });
+}
+
+async function refreshAll() {
+  await Promise.all([loadPods(), loadTraders()]);
+  loadMemberships();
+}
+
+const fmt = n => '$' + Number(n||0).toLocaleString();
+
+async function loadPods() {
+  pods = await api('GET', '/admin/pods');
+  const tb = document.querySelector('#podsTable tbody'); tb.innerHTML = '';
+  for (const p of pods) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${p.name}</td><td>${p.asset_class}</td><td>${fmt(p.allocated_capital)}</td>
+      <td>${p.has_alpaca ? '<span class="tag ok">linked</span>' : '<span class="tag no">fallback</span>'}</td>
+      <td class="row">
+        <button class="secondary" onclick="promptAlpaca('${p.id}','${p.name.replace(/'/g,"")}')">Alpaca</button>
+        <button class="secondary" onclick="promptCapital('${p.id}','${p.name.replace(/'/g,"")}',${p.allocated_capital})">Capital</button>
+      </td>`;
+    tb.appendChild(tr);
+  }
+  // selects
+  const opts = pods.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+  document.getElementById('mPod').innerHTML = opts;
+  document.getElementById('mFilter').innerHTML = '<option value="">All pods</option>' + opts;
+}
+
+async function createPod() {
+  const body = {
+    name: val('pName'), asset_class: val('pAsset'), benchmark_symbol: val('pBench') || 'SPY',
+    description: val('pDesc') || null, allocated_capital: Number(val('pCapital') || 0),
+    alpaca_api_key: val('pKey') || null, alpaca_api_secret: val('pSecret') || null,
+    alpaca_account_id: val('pAcct') || null,
+  };
+  if (!body.name) return toast('Pod name required', 'err');
+  try { await api('POST', '/admin/pods', body); toast('Pod created'); clearPod(); loadPods(); }
+  catch (e) { toast(e.message, 'err'); }
+}
+
+async function promptAlpaca(podId, name) {
+  const key = prompt(`Alpaca API key for "${name}":`); if (key === null) return;
+  const secret = prompt(`Alpaca API secret for "${name}":`); if (secret === null) return;
+  try { await api('POST', `/admin/pods/${podId}/alpaca`, {alpaca_api_key:key, alpaca_api_secret:secret});
+        toast('Alpaca credentials saved'); loadPods(); }
+  catch (e) { toast(e.message, 'err'); }
+}
+
+async function promptCapital(podId, name, current) {
+  const amt = prompt(`New allocated capital for "${name}":`, current); if (amt === null) return;
+  try { await api('POST', `/admin/pods/${podId}/capital`, {amount:Number(amt), note:'portal'});
+        toast('Capital updated'); loadPods(); }
+  catch (e) { toast(e.message, 'err'); }
+}
+
+async function loadTraders() {
+  traders = await api('GET', '/admin/traders');
+  const tb = document.querySelector('#tradersTable tbody'); tb.innerHTML = '';
+  for (const t of traders) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${t.display_name}</td><td class="muted">${t.id}</td>
+      <td>${t.is_admin ? '<span class="tag admin">admin</span>' : '<span class="tag">trader</span>'}</td>`;
+    tb.appendChild(tr);
+  }
+  document.getElementById('mTrader').innerHTML =
+    traders.map(t => `<option value="${t.id}">${t.display_name}</option>`).join('');
+}
+
+async function createTrader() {
+  const body = { display_name: val('tName'), email: val('tEmail'),
+                 password: val('tPass'), is_admin: val('tAdmin') === 'true' };
+  if (!body.display_name || !body.email || !body.password)
+    return toast('Name, email and password are required', 'err');
+  try { await api('POST', '/admin/traders', body);
+        toast('Account created for ' + body.email); clearTrader(); loadTraders(); }
+  catch (e) { toast(e.message, 'err'); }
+}
+
+async function loadMemberships() {
+  const pod = val('mFilter');
+  const mems = await api('GET', '/admin/memberships' + (pod ? `?pod_id=${pod}` : ''));
+  const podName = id => (pods.find(p => p.id === id) || {}).name || id;
+  const tb = document.querySelector('#memsTable tbody'); tb.innerHTML = '';
+  for (const m of mems) {
+    const tr = document.createElement('tr');
+    const trader = (m.traders && m.traders.display_name) || m.trader_id;
+    tr.innerHTML = `<td>${podName(m.pod_id)}</td><td>${trader}</td><td>${m.role}</td>
+      <td><button class="danger" onclick="unassign('${m.pod_id}','${m.trader_id}')">Remove</button></td>`;
+    tb.appendChild(tr);
+  }
+}
+
+async function assign() {
+  const body = { pod_id: val('mPod'), trader_id: val('mTrader'), role: val('mRole') };
+  if (!body.pod_id || !body.trader_id) return toast('Pick a pod and a trader', 'err');
+  try { await api('POST', '/admin/memberships', body); toast('Assigned'); loadMemberships(); }
+  catch (e) { toast(e.message, 'err'); }
+}
+
+async function unassign(podId, traderId) {
+  try { await api('DELETE', '/admin/memberships', {pod_id:podId, trader_id:traderId, role:'trader'});
+        toast('Removed'); loadMemberships(); }
+  catch (e) { toast(e.message, 'err'); }
+}
+
+const val = id => document.getElementById(id).value.trim();
+function clearPod(){ ['pName','pDesc','pKey','pSecret','pAcct'].forEach(i=>document.getElementById(i).value=''); }
+function clearTrader(){ ['tName','tEmail','tPass'].forEach(i=>document.getElementById(i).value=''); }
+
+document.getElementById('password').addEventListener('keydown', e => { if (e.key==='Enter') login(); });
+
+// boot
+if (token) enterApp();
+</script>
+</body>
+</html>
