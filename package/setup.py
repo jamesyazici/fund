@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="rqfc",
-    version="0.2.0",
+    version="0.3.0",
     packages=find_packages(),
     install_requires=[
         "alpaca-py>=0.13.0",

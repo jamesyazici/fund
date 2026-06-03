@@ -4,9 +4,9 @@ import { TradeBlotter } from '@/components/TradeBlotter'
 import { formatCompact } from '@/lib/formatters'
 import { useRealtimeTrades } from '@/hooks/useRealtimeTrades'
 
-function TotalAUM({ pods }: { pods: { id: string; starting_capital: number }[] }) {
+function TotalAUM({ pods }: { pods: { id: string; allocated_capital: number }[] }) {
   const navData = pods.map((p) => {
-    return { id: p.id, capital: p.starting_capital }
+    return { id: p.id, capital: p.allocated_capital }
   })
 
   const totalStarting = navData.reduce((acc, p) => acc + p.capital, 0)

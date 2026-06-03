@@ -5,7 +5,7 @@
 
 -- ── Pods ─────────────────────────────────────────────────────
 
-insert into pods (id, name, asset_class, description, benchmark_symbol, inception_date, starting_capital) values
+insert into pods (id, name, asset_class, description, benchmark_symbol, inception_date, allocated_capital) values
   ('a1000000-0000-0000-0000-000000000001', 'Alpha Equities', 'equities',
    'Long/short US large-cap equity strategy focused on momentum and value factors.',
    'SPY', current_date - 90, 5000000),
@@ -16,19 +16,32 @@ insert into pods (id, name, asset_class, description, benchmark_symbol, inceptio
    'Systematic fixed income strategy trading US Treasuries and investment-grade bonds.',
    'AGG', current_date - 90, 3000000);
 
--- ── Members ──────────────────────────────────────────────────
+-- ── Traders & memberships ────────────────────────────────────
 
-insert into members (pod_id, name, role) values
-  ('a1000000-0000-0000-0000-000000000001', 'Jordan Kim',    'pm'),
-  ('a1000000-0000-0000-0000-000000000001', 'Alex Chen',     'trader'),
-  ('a1000000-0000-0000-0000-000000000001', 'Sam Rivera',    'trader'),
+-- Demo traders. auth_user_id is null here; in production each trader is
+-- created as a Supabase Auth user and linked via auth_user_id. is_admin
+-- traders can trade any pod and allocate capital.
+insert into traders (id, display_name, is_admin) values
+  ('c1000000-0000-0000-0000-000000000001', 'Jordan Kim',    true),
+  ('c1000000-0000-0000-0000-000000000002', 'Alex Chen',     false),
+  ('c1000000-0000-0000-0000-000000000003', 'Sam Rivera',    false),
+  ('c1000000-0000-0000-0000-000000000004', 'Morgan Lee',    true),
+  ('c1000000-0000-0000-0000-000000000005', 'Casey Torres',  false),
+  ('c1000000-0000-0000-0000-000000000006', 'Drew Patel',    false),
+  ('c1000000-0000-0000-0000-000000000007', 'Riley Johnson', false),
+  ('c1000000-0000-0000-0000-000000000008', 'Quinn Murphy',  false);
 
-  ('a1000000-0000-0000-0000-000000000002', 'Morgan Lee',    'pm'),
-  ('a1000000-0000-0000-0000-000000000002', 'Casey Torres',  'trader'),
-  ('a1000000-0000-0000-0000-000000000002', 'Drew Patel',    'trader'),
+insert into pod_memberships (pod_id, trader_id, role) values
+  ('a1000000-0000-0000-0000-000000000001', 'c1000000-0000-0000-0000-000000000001', 'pm'),
+  ('a1000000-0000-0000-0000-000000000001', 'c1000000-0000-0000-0000-000000000002', 'trader'),
+  ('a1000000-0000-0000-0000-000000000001', 'c1000000-0000-0000-0000-000000000003', 'trader'),
 
-  ('a1000000-0000-0000-0000-000000000003', 'Riley Johnson', 'pm'),
-  ('a1000000-0000-0000-0000-000000000003', 'Quinn Murphy',  'trader');
+  ('a1000000-0000-0000-0000-000000000002', 'c1000000-0000-0000-0000-000000000004', 'pm'),
+  ('a1000000-0000-0000-0000-000000000002', 'c1000000-0000-0000-0000-000000000005', 'trader'),
+  ('a1000000-0000-0000-0000-000000000002', 'c1000000-0000-0000-0000-000000000006', 'trader'),
+
+  ('a1000000-0000-0000-0000-000000000003', 'c1000000-0000-0000-0000-000000000007', 'pm'),
+  ('a1000000-0000-0000-0000-000000000003', 'c1000000-0000-0000-0000-000000000008', 'trader');
 
 -- ── NAV History (90 days, random-walk with drift) ─────────────
 -- Uses generate_series to produce daily rows; each day's NAV drifts from previous.
@@ -78,19 +91,19 @@ begin
 end;
 $$;
 
--- ── Positions ────────────────────────────────────────────────
+-- ── Positions (pod-level — one Alpaca account per pod) ───────
 
 insert into positions (pod_id, symbol, quantity, avg_entry_price, current_price, market_value, unrealized_pnl) values
-  ('a1000000-0000-0000-0000-000000000001', 'AAPL',  500,   178.50, 184.20,   92100,   2850),
-  ('a1000000-0000-0000-0000-000000000001', 'MSFT',  300,   410.00, 425.80,  127740,   4740),
-  ('a1000000-0000-0000-0000-000000000001', 'NVDA',  200,   820.00, 875.50,  175100,  11100),
+  ('a1000000-0000-0000-0000-000000000001', 'AAPL',  500,  178.50, 184.20,   92100,   2850),
+  ('a1000000-0000-0000-0000-000000000001', 'MSFT',  300,  410.00, 425.80,  127740,   4740),
+  ('a1000000-0000-0000-0000-000000000001', 'NVDA',  200,  820.00, 875.50,  175100,  11100),
   ('a1000000-0000-0000-0000-000000000001', 'GOOGL', 100,  175.00, 180.90,   18090,     590),
 
-  ('a1000000-0000-0000-0000-000000000002', 'SPY',    50,   490.00, 498.75,   24937.5,  437.5),
-  ('a1000000-0000-0000-0000-000000000002', 'QQQ',    30,   420.00, 435.00,   13050,    450),
+  ('a1000000-0000-0000-0000-000000000002', 'SPY',    50,  490.00, 498.75,   24937.5,  437.5),
+  ('a1000000-0000-0000-0000-000000000002', 'QQQ',    30,  420.00, 435.00,   13050,    450),
 
-  ('a1000000-0000-0000-0000-000000000003', 'TLT',   400,    92.00,  94.50,   37800,   1000),
-  ('a1000000-0000-0000-0000-000000000003', 'IEF',   600,    95.00,  96.80,   58080,   1080);
+  ('a1000000-0000-0000-0000-000000000003', 'TLT',   400,   92.00,  94.50,   37800,   1000),
+  ('a1000000-0000-0000-0000-000000000003', 'IEF',   600,   95.00,  96.80,   58080,   1080);
 
 -- ── Sample trades (last 14 days) ─────────────────────────────
 
@@ -110,14 +123,14 @@ declare
   px        numeric;
   ts        timestamptz;
 begin
-  select id into m1_pm  from members where pod_id='a1000000-0000-0000-0000-000000000001' and role='pm'     limit 1;
-  select id into m1_t1  from members where pod_id='a1000000-0000-0000-0000-000000000001' and role='trader' limit 1;
-  select id into m1_t2  from members where pod_id='a1000000-0000-0000-0000-000000000001' and role='trader' offset 1 limit 1;
-  select id into m2_pm  from members where pod_id='a1000000-0000-0000-0000-000000000002' and role='pm'     limit 1;
-  select id into m2_t1  from members where pod_id='a1000000-0000-0000-0000-000000000002' and role='trader' limit 1;
-  select id into m2_t2  from members where pod_id='a1000000-0000-0000-0000-000000000002' and role='trader' offset 1 limit 1;
-  select id into m3_pm  from members where pod_id='a1000000-0000-0000-0000-000000000003' and role='pm'     limit 1;
-  select id into m3_t1  from members where pod_id='a1000000-0000-0000-0000-000000000003' and role='trader' limit 1;
+  select trader_id into m1_pm from pod_memberships where pod_id='a1000000-0000-0000-0000-000000000001' and role='pm'     limit 1;
+  select trader_id into m1_t1 from pod_memberships where pod_id='a1000000-0000-0000-0000-000000000001' and role='trader' limit 1;
+  select trader_id into m1_t2 from pod_memberships where pod_id='a1000000-0000-0000-0000-000000000001' and role='trader' offset 1 limit 1;
+  select trader_id into m2_pm from pod_memberships where pod_id='a1000000-0000-0000-0000-000000000002' and role='pm'     limit 1;
+  select trader_id into m2_t1 from pod_memberships where pod_id='a1000000-0000-0000-0000-000000000002' and role='trader' limit 1;
+  select trader_id into m2_t2 from pod_memberships where pod_id='a1000000-0000-0000-0000-000000000002' and role='trader' offset 1 limit 1;
+  select trader_id into m3_pm from pod_memberships where pod_id='a1000000-0000-0000-0000-000000000003' and role='pm'     limit 1;
+  select trader_id into m3_t1 from pod_memberships where pod_id='a1000000-0000-0000-0000-000000000003' and role='trader' limit 1;
 
   for i in 1..40 loop
     sym      := symbols1[1 + (floor(random()*6))::int];
@@ -125,7 +138,7 @@ begin
     qty      := (floor(random()*200)+10)::numeric;
     px       := (150 + random()*700)::numeric;
     ts       := now() - (random()*14 || ' days')::interval - (random()*8 || ' hours')::interval;
-    insert into trades (pod_id, member_id, symbol, side, quantity, price, notional, asset_class, executed_at)
+    insert into trades (pod_id, trader_id, symbol, side, quantity, price, notional, asset_class, executed_at)
     values ('a1000000-0000-0000-0000-000000000001',
             (array[m1_pm,m1_t1,m1_t2])[1+(floor(random()*3))::int],
             sym, side_val, qty, round(px,2), round(qty*px,2), 'equities', ts);
@@ -137,7 +150,7 @@ begin
     qty      := (floor(random()*50)+5)::numeric;
     px       := (400 + random()*150)::numeric;
     ts       := now() - (random()*14 || ' days')::interval - (random()*8 || ' hours')::interval;
-    insert into trades (pod_id, member_id, symbol, side, quantity, price, notional, asset_class, executed_at)
+    insert into trades (pod_id, trader_id, symbol, side, quantity, price, notional, asset_class, executed_at)
     values ('a1000000-0000-0000-0000-000000000002',
             (array[m2_pm,m2_t1,m2_t2])[1+(floor(random()*3))::int],
             sym, side_val, qty, round(px,2), round(qty*px,2), 'options', ts);
@@ -149,7 +162,7 @@ begin
     qty      := (floor(random()*300)+50)::numeric;
     px       := (88 + random()*20)::numeric;
     ts       := now() - (random()*14 || ' days')::interval - (random()*8 || ' hours')::interval;
-    insert into trades (pod_id, member_id, symbol, side, quantity, price, notional, asset_class, executed_at)
+    insert into trades (pod_id, trader_id, symbol, side, quantity, price, notional, asset_class, executed_at)
     values ('a1000000-0000-0000-0000-000000000003',
             (array[m3_pm,m3_t1])[1+(floor(random()*2))::int],
             sym, side_val, qty, round(px,2), round(qty*px,2), 'fixed_income', ts);

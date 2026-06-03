@@ -28,12 +28,20 @@ class Account:
         self.account_id: str = alpaca_acct.id
         self.paper = paper
 
-        db.ensure_account(self.account_id, display_name=name)
-        self.log_snapshot()
+        # Link this Alpaca account to its pod/member row. Admins register
+        # members with admin.add_member(...); until then nothing is logged.
+        self._member = db.resolve_member(self.account_id)
 
         mode = "PAPER" if paper else "LIVE"
-        label = f" ({name})" if name else ""
-        print(f"rqfc initialized — {mode} | account: {self.account_id}{label}")
+        if self._member:
+            self.log_snapshot()
+            label = f" ({self._member.get('name') or name})" if (self._member.get("name") or name) else ""
+            print(f"rqfc initialized — {mode} | account: {self.account_id}{label} | pod linked ✓")
+        else:
+            print(f"rqfc initialized — {mode} | account: {self.account_id}")
+            print(f"[rqfc] This account isn't registered to a pod yet — trades won't appear "
+                  f"on the dashboard. Ask an admin to run:\n"
+                  f"        admin.add_member(pod_id, 'Your Name', alpaca_account_id='{self.account_id}')")
 
     # -------------------------------------------------------------------------
     # Trading
@@ -49,30 +57,30 @@ class Account:
             limit_price:    Required when order_type="limit"
             time_in_force:  "day" (default), "gtc", "ioc", "fok"
         """
-        return _trading.buy(self._tc, self.account_id, symbol, qty,
+        return _trading.buy(self._tc, self._member, symbol, qty,
                             order_type, limit_price, time_in_force)
 
     def sell(self, symbol: str, qty: float, order_type: str = "market",
              limit_price: float = None, time_in_force: str = "day"):
         """Sell shares you own."""
-        return _trading.sell(self._tc, self.account_id, symbol, qty,
+        return _trading.sell(self._tc, self._member, symbol, qty,
                              order_type, limit_price, time_in_force)
 
     def short(self, symbol: str, qty: float, time_in_force: str = "day"):
         """Short sell — bet the price will drop. Close with cover()."""
-        return _trading.short(self._tc, self.account_id, symbol, qty, time_in_force)
+        return _trading.short(self._tc, self._member, symbol, qty, time_in_force)
 
     def cover(self, symbol: str, qty: float, time_in_force: str = "day"):
         """Cover a short position — buy back the shorted shares."""
-        return _trading.cover(self._tc, self.account_id, symbol, qty, time_in_force)
+        return _trading.cover(self._tc, self._member, symbol, qty, time_in_force)
 
     def dollar_buy(self, symbol: str, amount: float, time_in_force: str = "day"):
         """Buy by dollar amount instead of share count. e.g. dollar_buy("AAPL", 5000)"""
-        return _trading.dollar_buy(self._tc, self.account_id, symbol, amount, time_in_force)
+        return _trading.dollar_buy(self._tc, self._member, symbol, amount, time_in_force)
 
     def dollar_sell(self, symbol: str, amount: float, time_in_force: str = "day"):
         """Sell by dollar amount instead of share count."""
-        return _trading.dollar_sell(self._tc, self.account_id, symbol, amount, time_in_force)
+        return _trading.dollar_sell(self._tc, self._member, symbol, amount, time_in_force)
 
     def bracket_order(self, symbol: str, qty: float, side: str,
                       take_profit: float, stop_loss: float,
@@ -83,7 +91,7 @@ class Account:
             take_profit: Limit price to exit with a gain
             stop_loss:   Stop price to cap the loss
         """
-        return _trading.bracket_order(self._tc, self.account_id, symbol, qty,
+        return _trading.bracket_order(self._tc, self._member, symbol, qty,
                                       side, take_profit, stop_loss, time_in_force)
 
     def trailing_stop(self, symbol: str, qty: float,
@@ -92,7 +100,7 @@ class Account:
         Trailing stop that follows the price automatically.
             trail_percent: How far (%) below peak to set the stop, e.g. 5.0 = 5%
         """
-        return _trading.trailing_stop(self._tc, self.account_id, symbol, qty,
+        return _trading.trailing_stop(self._tc, self._member, symbol, qty,
                                       trail_percent, side)
 
     def get_open_orders(self):
@@ -179,7 +187,7 @@ class Account:
         Rebalance to target % weights. Positions not in target_weights are closed.
             target_weights: {"AAPL": 0.30, "TSLA": 0.20, "NVDA": 0.50}
         """
-        return _account.rebalance(self._tc, self.account_id, target_weights)
+        return _account.rebalance(self._tc, self._member, target_weights)
 
     def log_snapshot(self):
         """
@@ -189,9 +197,38 @@ class Account:
         """
         try:
             acct = self._tc.get_account()
-            db.log_snapshot(self.account_id, float(acct.equity), float(acct.cash))
+            db.log_snapshot(self._member, float(acct.equity), float(acct.cash))
         except Exception as e:
             print(f"[rqfc] Warning: could not log snapshot: {e}")
+
+    def sync(self):
+        """
+        Push your current equity, cash, and open positions to Supabase so the
+        Fund dashboard reflects your live portfolio.
+
+        Call this at least once per trading session (and after big changes).
+        Equity history drives your pod's NAV chart and risk metrics; positions
+        feed the holdings table. Individual trades are logged automatically as
+        you place them.
+        """
+        if not self._member:
+            print("[rqfc] sync skipped — account not registered to a pod yet.")
+            return
+        self.log_snapshot()
+        try:
+            positions = self._tc.get_all_positions()
+            rows = [{
+                "symbol":          p.symbol,
+                "quantity":        float(p.qty),
+                "avg_entry_price": float(p.avg_entry_price),
+                "current_price":   float(p.current_price) if p.current_price else None,
+                "market_value":    float(p.market_value) if p.market_value else None,
+                "unrealized_pnl":  float(p.unrealized_pl) if p.unrealized_pl else None,
+            } for p in positions]
+            db.sync_positions(self._member, rows)
+            print(f"[rqfc] Synced {len(rows)} position(s) and equity snapshot to the dashboard.")
+        except Exception as e:
+            print(f"[rqfc] Warning: could not sync positions: {e}")
 
     # -------------------------------------------------------------------------
     # Market data

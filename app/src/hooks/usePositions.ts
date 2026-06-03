@@ -7,6 +7,7 @@ export function usePositions(podId: string) {
   return useQuery({
     queryKey: ['positions', podId],
     queryFn: async () => {
+      // One Alpaca account per pod, so positions are already pod-level.
       const { data, error } = await supabase
         .from('positions')
         .select('*')

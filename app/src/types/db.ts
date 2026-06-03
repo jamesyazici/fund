@@ -9,10 +9,11 @@ export const PodSchema = z.object({
   description: z.string().nullable(),
   benchmark_symbol: z.string(),
   inception_date: z.string(),
-  starting_capital: z.number(),
+  allocated_capital: z.number(),
   created_at: z.string(),
 })
 
+// `members` is a view over pod_memberships + traders, presenting a pod roster.
 export const MemberSchema = z.object({
   id: z.string().uuid(),
   pod_id: z.string().uuid(),
@@ -20,17 +21,22 @@ export const MemberSchema = z.object({
   role: z.enum(['pm', 'trader']),
   avatar_url: z.string().nullable(),
   joined_at: z.string(),
+  is_admin: z.boolean(),
 })
 
 export const TradeSchema = z.object({
   id: z.string().uuid(),
   pod_id: z.string().uuid(),
-  member_id: z.string().uuid().nullable(),
+  trader_id: z.string().uuid().nullable(),
   symbol: z.string(),
   side: z.enum(['buy', 'sell']),
-  quantity: z.number(),
-  price: z.number(),
-  notional: z.number(),
+  order_type: z.string().nullable(),
+  quantity: z.number().nullable(),
+  price: z.number().nullable(),
+  notional: z.number().nullable(),
+  limit_price: z.number().nullable(),
+  filled_qty: z.number().nullable(),
+  status: z.string().nullable(),
   asset_class: z.string(),
   alpaca_order_id: z.string().nullable(),
   executed_at: z.string(),
@@ -85,17 +91,47 @@ export type Metrics = z.infer<typeof MetricsSchema>
 
 // ─── Supabase Database generic type (used by createClient<Database>) ──────────
 
+type Trader = {
+  id: string
+  auth_user_id: string | null
+  display_name: string
+  is_admin: boolean
+  created_at: string
+}
+
+type PodMembership = {
+  pod_id: string
+  trader_id: string
+  role: 'pm' | 'trader'
+  assigned_at: string
+}
+
+type CapitalAllocation = {
+  id: string
+  pod_id: string
+  new_capital: number
+  previous_capital: number | null
+  allocated_by: string | null
+  note: string | null
+  created_at: string
+}
+
 export type Database = {
   public: {
     Tables: {
       pods: { Row: Pod; Insert: Omit<Pod, 'id' | 'created_at'>; Update: Partial<Pod> }
-      members: { Row: Member; Insert: Omit<Member, 'id'>; Update: Partial<Member> }
+      traders: { Row: Trader; Insert: Omit<Trader, 'id' | 'created_at'>; Update: Partial<Trader> }
+      pod_memberships: { Row: PodMembership; Insert: PodMembership; Update: Partial<PodMembership> }
       trades: { Row: Trade; Insert: Omit<Trade, 'id' | 'created_at'>; Update: Partial<Trade> }
       positions: { Row: Position; Insert: Omit<Position, 'id'>; Update: Partial<Position> }
       nav_history: { Row: NavHistory; Insert: NavHistory; Update: Partial<NavHistory> }
       metrics: { Row: Metrics; Insert: Metrics; Update: Partial<Metrics> }
+      capital_allocations: { Row: CapitalAllocation; Insert: Omit<CapitalAllocation, 'id' | 'created_at'>; Update: Partial<CapitalAllocation> }
     }
-    Views: Record<string, never>
+    Views: {
+      // pod_memberships + traders presented as a pod roster.
+      members: { Row: Member }
+    }
     Functions: Record<string, never>
     Enums: Record<string, never>
   }

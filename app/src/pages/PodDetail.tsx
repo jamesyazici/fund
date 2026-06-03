@@ -71,7 +71,7 @@ export function PodDetail() {
       <section>
         <h2 className="section-heading">NAV History</h2>
         <div className="rounded-2xl border border-zinc-200 bg-white dark:border-white/10 dark:bg-zinc-900 p-5">
-          <NavChart podId={pod.id} startingCapital={Number(pod.starting_capital)} />
+          <NavChart podId={pod.id} startingCapital={Number(pod.allocated_capital)} />
         </div>
       </section>
 

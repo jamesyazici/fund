@@ -140,7 +140,7 @@ def get_win_rate(client: TradingClient) -> dict:
     }
 
 
-def rebalance(client: TradingClient, account_id: str, target_weights: dict):
+def rebalance(client: TradingClient, member, target_weights: dict):
     total_value = get_portfolio_value(client)
     positions = {p.symbol: float(p.market_value) for p in get_all_positions(client)}
     for sym in list(positions.keys()):
@@ -156,8 +156,8 @@ def rebalance(client: TradingClient, account_id: str, target_weights: dict):
             continue
         if diff > 0:
             print(f"  BUY  ${diff:,.2f} of {sym}")
-            _trading.dollar_buy(client, account_id, sym, diff)
+            _trading.dollar_buy(client, member, sym, diff)
         else:
             print(f"  SELL ${abs(diff):,.2f} of {sym}")
-            _trading.dollar_sell(client, account_id, sym, abs(diff))
+            _trading.dollar_sell(client, member, sym, abs(diff))
     print("Rebalance complete.")

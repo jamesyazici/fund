@@ -34,7 +34,7 @@ export function PodCard({ pod }: PodCardProps) {
   const accentColor = ASSET_CLASS_COLORS[pod.asset_class] ?? '#6366f1'
 
   const latest = history?.[history.length - 1]
-  const nav = latest?.nav ?? pod.starting_capital
+  const nav = latest?.nav ?? pod.allocated_capital
   const dayReturn = latest?.daily_return ?? null
 
   return (
