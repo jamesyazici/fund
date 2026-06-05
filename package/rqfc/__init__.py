@@ -30,7 +30,7 @@ from .client import Account
 from .admin import Admin
 
 __version__ = "1.0.0"
-DEFAULT_BACKEND_URL = "https://api.rqfc.fund"
+DEFAULT_BACKEND_URL = "https://fund-tkb1.onrender.com"
 
 _session: Session | None = None
 

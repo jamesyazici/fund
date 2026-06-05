@@ -5,11 +5,12 @@ writes everything to Supabase. Traders authenticate with backend sessions,
 rqfc API keys, or legacy Supabase JWTs.
 """
 from pathlib import Path
+import json
 import secrets
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 
 from . import alpaca_client as alp
 from . import db, metrics
@@ -29,7 +30,13 @@ from .schemas import (
 
 PORTAL_HTML = Path(__file__).parent / "portal" / "index.html"
 
-app = FastAPI(title="RQFC Trading Backend", version="1.0.0")
+app = FastAPI(
+    title="RQFC Trading Backend",
+    version="1.0.0",
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -51,9 +58,127 @@ def _require_pod_access(trader: dict, pod_id: str) -> None:
 
 # ── Health & identity ─────────────────────────────────────────────────────────
 
-@app.get("/health")
-def health():
-    return {"ok": True}
+@app.get("/", include_in_schema=False)
+def root_page():
+    return HTMLResponse("""
+<!doctype html>
+<html lang="en" data-theme="system">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>RQFC Fund API</title>
+<style>
+  :root, [data-theme="dark"] {
+    --bg:#080a0f; --panel:#111723; --line:#263246; --text:#f1f5f9;
+    --muted:#94a3b8; --accent:#22c55e; --accent2:#60a5fa; --button:#f8fafc; --buttonText:#071014;
+    color-scheme:dark;
+  }
+  [data-theme="light"] {
+    --bg:#f8fafc; --panel:#ffffff; --line:#d9e2ee; --text:#0f172a;
+    --muted:#526276; --accent:#047857; --accent2:#2563eb; --button:#0f172a; --buttonText:#ffffff;
+    color-scheme:light;
+  }
+  @media (prefers-color-scheme: light) {
+    [data-theme="system"] {
+      --bg:#f8fafc; --panel:#ffffff; --line:#d9e2ee; --text:#0f172a;
+      --muted:#526276; --accent:#047857; --accent2:#2563eb; --button:#0f172a; --buttonText:#ffffff;
+      color-scheme:light;
+    }
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; min-height:100vh; color:var(--text); background:
+      radial-gradient(circle at 18% 12%, #17324a 0, transparent 26rem),
+      radial-gradient(circle at 86% 18%, #183829 0, transparent 22rem),
+      var(--bg);
+    font:16px/1.5 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  }
+  main { min-height:100vh; display:grid; place-items:center; padding:2rem; }
+  .hero { width:min(980px, 100%); display:grid; grid-template-columns:1.1fr .9fr; gap:3rem; align-items:center; }
+  .eyebrow { color:var(--accent); font-size:.78rem; letter-spacing:.16em; text-transform:uppercase; font-weight:700; }
+  h1 { font-size:clamp(2.7rem, 7vw, 5.7rem); line-height:.92; margin:.6rem 0 1.2rem; letter-spacing:0; }
+  p { max-width:36rem; color:var(--muted); margin:0 0 1.5rem; font-size:1.05rem; }
+  a {
+    display:inline-flex; align-items:center; justify-content:center; min-height:2.8rem;
+    padding:0 1rem; border-radius:8px; background:var(--button); color:var(--buttonText);
+    text-decoration:none; font-weight:750;
+  }
+  .theme {
+    position:fixed; top:1rem; right:1rem; display:flex; gap:.25rem; padding:.25rem;
+    border:1px solid var(--line); border-radius:10px; background:color-mix(in srgb, var(--panel) 82%, transparent);
+  }
+  .theme button {
+    min-height:2rem; border:0; border-radius:7px; padding:0 .7rem; background:transparent;
+    color:var(--muted); font:inherit; font-size:.82rem; cursor:pointer;
+  }
+  .theme button.active { background:var(--button); color:var(--buttonText); font-weight:750; }
+  .visual {
+    border:1px solid var(--line); background:rgba(17,23,35,.72); border-radius:16px;
+    padding:1rem; box-shadow:0 24px 80px rgba(0,0,0,.34); overflow:hidden;
+  }
+  .bar { display:flex; gap:.4rem; margin-bottom:1rem; }
+  .dot { width:.7rem; height:.7rem; border-radius:999px; background:#334155; }
+  .dot:nth-child(1) { background:#ef4444; } .dot:nth-child(2) { background:#f59e0b; } .dot:nth-child(3) { background:#22c55e; }
+  .grid { display:grid; grid-template-columns:repeat(7, 1fr); gap:.45rem; }
+  .cell { aspect-ratio:1; border-radius:6px; background:#1e293b; }
+  .cell:nth-child(3n) { background:#164e63; } .cell:nth-child(4n) { background:#14532d; }
+  .cell:nth-child(9n) { background:#1d4ed8; } .cell:nth-child(11n) { background:#64748b; }
+  .metric { margin-top:1rem; display:grid; grid-template-columns:1fr 1fr; gap:.6rem; }
+  .tile { border:1px solid var(--line); border-radius:10px; padding:.85rem; background:#0f172a; }
+  .label { color:var(--muted); font-size:.75rem; }
+  .value { font-size:1.35rem; font-weight:800; margin-top:.2rem; }
+  @media (max-width:760px) {
+    .hero { grid-template-columns:1fr; gap:2rem; }
+    .visual { order:-1; }
+  }
+</style>
+</head>
+<body>
+<div class="theme" aria-label="Theme">
+  <button data-theme-choice="system" onclick="setTheme('system')">System</button>
+  <button data-theme-choice="light" onclick="setTheme('light')">Light</button>
+  <button data-theme-choice="dark" onclick="setTheme('dark')">Dark</button>
+</div>
+<main>
+  <section class="hero" aria-label="RQFC Fund API">
+    <div>
+      <div class="eyebrow">RQFC Fund Infrastructure</div>
+      <h1>Trading backend online.</h1>
+      <p>
+        This service powers authenticated pod trading, portfolio sync, and the
+        private admin control plane. API documentation is not exposed publicly.
+      </p>
+      <a href="/portal">Open Admin Portal</a>
+    </div>
+    <div class="visual" aria-hidden="true">
+      <div class="bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+      <div class="grid">
+        <span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span>
+        <span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span>
+        <span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span>
+        <span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span>
+      </div>
+      <div class="metric">
+        <div class="tile"><div class="label">Auth</div><div class="value">Locked</div></div>
+        <div class="tile"><div class="label">Execution</div><div class="value">API</div></div>
+      </div>
+    </div>
+  </section>
+</main>
+<script>
+const THEME_KEY = 'rqfc_public_theme';
+function setTheme(theme) {
+  localStorage.setItem(THEME_KEY, theme);
+  document.documentElement.dataset.theme = theme;
+  document.querySelectorAll('[data-theme-choice]').forEach(button => {
+    button.classList.toggle('active', button.dataset.themeChoice === theme);
+  });
+}
+setTheme(localStorage.getItem(THEME_KEY) || 'system');
+</script>
+</body>
+</html>
+    """)
 
 
 @app.post("/auth/login")
@@ -159,17 +284,13 @@ def sync_pod(pod_id: str, trader: dict = Depends(get_current_trader)):
 
 @app.get("/portal", include_in_schema=False)
 def portal_page():
-    response = FileResponse(PORTAL_HTML)
+    html = PORTAL_HTML.read_text(encoding="utf-8").replace(
+        "__GOOGLE_OAUTH_CLIENT_ID__",
+        json.dumps(get_settings().google_oauth_client_id),
+    )
+    response = HTMLResponse(html)
     response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
     return response
-
-
-@app.get("/admin/google-config")
-def admin_google_config():
-    return {
-        "client_id": get_settings().google_oauth_client_id,
-        "admin_emails": sorted(get_settings().admin_google_emails),
-    }
 
 
 @app.post("/admin/login")

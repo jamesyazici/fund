@@ -11,20 +11,28 @@ pod; admins can trade any pod and manage capital/membership.
 See `../docs/ARCHITECTURE.md` and `../docs/RUNBOOK.md` for the full system.
 
 ## Install
+From GitHub:
+
+```bash
+pip install git+https://github.com/Rutgers-Quant-Finance-Club/fund.git
+```
+
+After publishing to PyPI, this becomes:
+
 ```bash
 pip install rqfc
 ```
 
 For local package development from this repo:
 ```bash
-pip install -e package
+pip install -e .
 ```
 
 ## Trader Login
 By default, `rqfc` talks to the deployed RQFC API:
 
 ```text
-https://api.rqfc.fund
+https://fund-tkb1.onrender.com
 ```
 
 Admins issue either email/password credentials or a trader API key. Traders do

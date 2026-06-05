@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rqfc"
+version = "1.0.0"
+description = "Thin client for the RQFC fund trading backend"
+readme = "package/README.md"
+requires-python = ">=3.9"
+authors = [{ name = "RQFC" }]
+dependencies = [
+  "requests>=2.28.0",
+]
+
+[tool.setuptools]
+package-dir = { "" = "package" }
+
+[tool.setuptools.packages.find]
+where = ["package"]
+include = ["rqfc*"]

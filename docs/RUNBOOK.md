@@ -45,7 +45,7 @@ Run it:
 ```bash
 uvicorn app.main:app --reload --port 8000
 ```
-Check: `curl localhost:8000/health` → `{"ok":true}`.
+Check: open `http://localhost:8000/` and confirm the backend landing page loads.
 
 For Render, create a Web Service with:
 - Root Directory: `backend`
@@ -74,10 +74,8 @@ exists: edit + run `python -m scripts.seed_users` from `backend/`.)
 
 ## 4. Install the client
 ```bash
-pip install -e package           # from repo root
+pip install -e .                 # from repo root
 export RQFC_BACKEND_URL=http://localhost:8000
-export RQFC_SUPABASE_URL=https://<project>.supabase.co
-export RQFC_SUPABASE_ANON_KEY=<anon-key>
 ```
 
 ---

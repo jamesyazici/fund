@@ -11,7 +11,9 @@ pip install -r requirements.txt
 cp .env.example .env     # fill in Supabase + Alpaca values
 uvicorn app.main:app --reload --port 8000
 ```
-Interactive docs at http://localhost:8000/docs.
+The public root page is at http://localhost:8000/. FastAPI's `/docs`, `/redoc`,
+and `/openapi.json` pages are disabled so the deployed backend does not publish
+an API browser.
 
 ## Deploy on Render
 Create a Web Service with:
@@ -26,7 +28,7 @@ because the FastAPI app is in `backend/app/main.py`.
 ## Endpoints
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| GET | `/health` | — | liveness |
+| GET | `/` | — | public backend landing page |
 | GET | `/portal` | — | serves the admin portal web UI |
 | POST | `/auth/login` | email/password | Supabase Auth login via backend → backend trader session |
 | GET | `/me` | trader | profile + pod assignments |
@@ -37,7 +39,6 @@ because the FastAPI app is in `backend/app/main.py`.
 | GET | `/pods/{id}/positions` | member / admin | live positions |
 | GET | `/market/price`, `/market/bars` | trader | market data |
 | POST | `/sync/{pod_id}` | member / admin | Alpaca → Supabase (positions, NAV, metrics) |
-| GET | `/admin/google-config` | — | Google client id + allowed admin emails for portal sign-in |
 | POST | `/admin/login` | Google ID token | verified Google admin login → portal token |
 | GET | `/admin/pods` | admin | pods + whether Alpaca is configured |
 | POST | `/admin/pods` | admin | create pod (+ optional Alpaca creds) |

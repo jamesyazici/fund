@@ -80,7 +80,7 @@ Traders should never need to know or configure `SUPABASE_URL`,
 `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, or
 Alpaca API keys. The only optional client-side configuration is
 `RQFC_BACKEND_URL`, used for local development or staging. The published package
-should default to the production backend, for example `https://api.rqfc.fund`.
+should default to the production backend, currently `https://fund-tkb1.onrender.com`.
 
 ## Components
 
