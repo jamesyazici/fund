@@ -16,8 +16,12 @@ class Settings:
         self.supabase_jwt_secret = _require("SUPABASE_JWT_SECRET")
         self.supabase_anon_key = os.environ.get("SUPABASE_ANON_KEY", "")
 
-        # Alpaca — paper trading by default.
+        # Alpaca - paper trading by default.
         self.alpaca_paper = os.environ.get("ALPACA_PAPER", "true").lower() != "false"
+        self.alpaca_trading_base_url = os.environ.get(
+            "ALPACA_TRADING_BASE_URL",
+            "https://paper-api.alpaca.markets" if self.alpaca_paper else "https://api.alpaca.markets",
+        )
         # Optional single-account fallback: if a pod has no row in
         # pod_alpaca_credentials, the backend uses these env keys. Lets you
         # validate one pod end-to-end without storing secrets in the DB.

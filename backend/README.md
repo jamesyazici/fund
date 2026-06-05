@@ -13,6 +13,16 @@ uvicorn app.main:app --reload --port 8000
 ```
 Interactive docs at http://localhost:8000/docs.
 
+## Deploy on Render
+Create a Web Service with:
+
+- Root Directory: `backend`
+- Build Command: `pip install -r requirements.txt`
+- Start Command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+
+If the Root Directory is the repo root instead, `uvicorn main:app` will fail
+because the FastAPI app is in `backend/app/main.py`.
+
 ## Endpoints
 | Method | Path | Auth | Purpose |
 |---|---|---|---|

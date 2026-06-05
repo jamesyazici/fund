@@ -159,7 +159,9 @@ def sync_pod(pod_id: str, trader: dict = Depends(get_current_trader)):
 
 @app.get("/portal", include_in_schema=False)
 def portal_page():
-    return FileResponse(PORTAL_HTML)
+    response = FileResponse(PORTAL_HTML)
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
+    return response
 
 
 @app.get("/admin/google-config")

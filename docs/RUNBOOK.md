@@ -35,6 +35,8 @@ Fill `.env`:
 - `ALPACA_API_KEY` / `ALPACA_API_SECRET` — your paper keys. (These act as the
   fallback Alpaca account for any pod without its own stored creds, so a single
   pod works immediately.)
+- `ALPACA_TRADING_BASE_URL=https://paper-api.alpaca.markets` to make the paper
+  trading endpoint explicit.
 - `GOOGLE_OAUTH_CLIENT_ID` — a Google OAuth **Web application** client id whose
   authorized JavaScript origin includes `http://localhost:8000`
 - `ADMIN_GOOGLE_EMAILS` — comma-separated Google emails allowed into the admin portal
@@ -44,6 +46,11 @@ Run it:
 uvicorn app.main:app --reload --port 8000
 ```
 Check: `curl localhost:8000/health` → `{"ok":true}`.
+
+For Render, create a Web Service with:
+- Root Directory: `backend`
+- Build Command: `pip install -r requirements.txt`
+- Start Command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
 
 ---
 

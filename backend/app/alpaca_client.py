@@ -44,7 +44,13 @@ def _resolve_creds(pod_id: str):
 
 def trading_client(pod_id: str) -> TradingClient:
     key, secret = _resolve_creds(pod_id)
-    return TradingClient(key, secret, paper=get_settings().alpaca_paper)
+    settings = get_settings()
+    return TradingClient(
+        key,
+        secret,
+        paper=settings.alpaca_paper,
+        url_override=settings.alpaca_trading_base_url,
+    )
 
 
 def data_client(pod_id: str) -> StockHistoricalDataClient:

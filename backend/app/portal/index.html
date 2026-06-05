@@ -211,6 +211,10 @@ async function api(method, path, body) {
 }
 
 async function handleGoogleCredential(response) {
+  if (!response || !response.credential) {
+    toast('Google sign-in did not return a credential. Check popup blockers and OAuth client settings.', 'err');
+    return;
+  }
   try {
     const r = await api('POST', '/admin/login', {credential: response.credential});
     token = r.token; localStorage.setItem(TKEY, token);
@@ -448,6 +452,7 @@ async function initGoogleSignIn() {
     google.accounts.id.initialize({
       client_id: cfg.client_id,
       callback: handleGoogleCredential,
+      ux_mode: 'popup',
     });
     google.accounts.id.renderButton(
       document.getElementById('googleSignIn'),
