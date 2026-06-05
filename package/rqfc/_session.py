@@ -1,7 +1,7 @@
 """Authenticated HTTP session against the RQFC backend.
 
-Login goes to Supabase Auth (email + password → JWT); every backend call carries
-that JWT as a bearer token. No Alpaca keys ever touch the client.
+The backend owns auth, authorization, and Alpaca credentials. This client stores
+only a backend-issued token or trader API key and sends it as bearer auth.
 """
 import re
 
@@ -15,29 +15,38 @@ def looks_like_uuid(value: str) -> bool:
 
 
 class Session:
-    def __init__(self, backend_url: str, supabase_url: str, anon_key: str):
+    def __init__(self, backend_url: str):
         self.backend_url = backend_url.rstrip("/")
-        self.supabase_url = supabase_url.rstrip("/")
-        self.anon_key = anon_key
         self.access_token = None
+        self.profile = None
 
-    def login(self, email: str, password: str) -> None:
+    def login(self, email: str, password: str) -> dict:
         r = requests.post(
-            f"{self.supabase_url}/auth/v1/token",
-            params={"grant_type": "password"},
-            headers={"apikey": self.anon_key, "Content-Type": "application/json"},
+            f"{self.backend_url}/auth/login",
             json={"email": email, "password": password},
             timeout=30,
         )
         if r.status_code != 200:
             raise RuntimeError(f"Login failed [{r.status_code}]: {r.text}")
-        self.access_token = r.json()["access_token"]
+        data = r.json()
+        self.access_token = data["token"]
+        self.profile = data.get("profile")
+        return self.profile or {}
+
+    def use_api_key(self, api_key: str) -> None:
+        if not api_key:
+            raise ValueError("api_key is required.")
+        self.access_token = api_key
+        self.profile = None
 
     # ── HTTP helpers ─────────────────────────────────────────────────────────
 
     def _headers(self) -> dict:
         if not self.access_token:
-            raise RuntimeError("Not logged in. Call rqfc.login(email, password) first.")
+            raise RuntimeError(
+                "Not logged in. Call rqfc.login(email, password) or "
+                "rqfc.login(api_key='rqfc_...') first."
+            )
         return {"Authorization": f"Bearer {self.access_token}"}
 
     def get(self, path: str, params: dict = None):

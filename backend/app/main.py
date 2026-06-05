@@ -1,9 +1,11 @@
 """RQFC trading backend.
 
 Holds Alpaca credentials, enforces trader/pod permissions, submits orders, and
-writes everything to Supabase. Traders authenticate with a Supabase JWT.
+writes everything to Supabase. Traders authenticate with backend sessions,
+rqfc API keys, or legacy Supabase JWTs.
 """
 from pathlib import Path
+import secrets
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,13 +13,18 @@ from fastapi.responses import FileResponse
 
 from . import alpaca_client as alp
 from . import db, metrics
-from .auth import get_current_trader
-from .portal_auth import get_admin_actor, verify_credentials, issue_portal_token
+from .auth import (
+    api_key_prefix,
+    authenticate_with_supabase,
+    get_current_trader,
+    hash_api_key,
+)
+from .portal_auth import get_admin_actor, verify_google_admin, issue_portal_token
 from .config import get_settings
 from .schemas import (
     OrderRequest, CancelRequest, CreatePodRequest,
     SetAlpacaRequest, CapitalRequest, MembershipRequest,
-    PortalLogin, CreateTraderRequest,
+    PortalLogin, TraderLogin, CreateTraderRequest, CreateTraderApiKeyRequest,
 )
 
 PORTAL_HTML = Path(__file__).parent / "portal" / "index.html"
@@ -47,6 +54,11 @@ def _require_pod_access(trader: dict, pod_id: str) -> None:
 @app.get("/health")
 def health():
     return {"ok": True}
+
+
+@app.post("/auth/login")
+def trader_login(req: TraderLogin):
+    return authenticate_with_supabase(req.email, req.password)
 
 
 @app.get("/me")
@@ -142,19 +154,26 @@ def sync_pod(pod_id: str, trader: dict = Depends(get_current_trader)):
 
 
 # ── Admin portal ──────────────────────────────────────────────────────────────
-# Admin endpoints accept a portal token (POST /admin/login) OR a Supabase admin
-# JWT — both resolve via get_admin_actor.
+# Admin endpoints accept a portal token (POST /admin/login) OR any supported
+# trader bearer whose linked trader has is_admin=true.
 
 @app.get("/portal", include_in_schema=False)
 def portal_page():
     return FileResponse(PORTAL_HTML)
 
 
+@app.get("/admin/google-config")
+def admin_google_config():
+    return {
+        "client_id": get_settings().google_oauth_client_id,
+        "admin_emails": sorted(get_settings().admin_google_emails),
+    }
+
+
 @app.post("/admin/login")
 def admin_login(req: PortalLogin):
-    if not verify_credentials(req.username, req.password):
-        raise HTTPException(status_code=401, detail="Invalid portal credentials.")
-    return {"token": issue_portal_token()}
+    admin = verify_google_admin(req.credential)
+    return {"token": issue_portal_token(admin["email"]), "admin": admin}
 
 
 @app.get("/admin/pods")
@@ -213,6 +232,49 @@ def admin_create_trader(req: CreateTraderRequest, actor: dict = Depends(get_admi
     trader = db.create_trader(req.display_name, req.is_admin, auth_user_id)
     return {"trader_id": trader["id"], "display_name": trader["display_name"],
             "is_admin": trader["is_admin"], "email": req.email}
+
+
+@app.get("/admin/traders/{trader_id}/api-keys")
+def admin_list_trader_api_keys(trader_id: str, actor: dict = Depends(get_admin_actor)):
+    if not db.get_trader_by_id(trader_id):
+        raise HTTPException(404, "Trader not found.")
+    return db.list_trader_api_keys(trader_id)
+
+
+@app.post("/admin/traders/{trader_id}/api-keys")
+def admin_create_trader_api_key(
+    trader_id: str,
+    req: CreateTraderApiKeyRequest,
+    actor: dict = Depends(get_admin_actor),
+):
+    if not db.get_trader_by_id(trader_id):
+        raise HTTPException(404, "Trader not found.")
+    name = req.name.strip()
+    if not name:
+        raise HTTPException(400, "API key name is required.")
+
+    plaintext = "rqfc_" + secrets.token_urlsafe(32)
+    row = db.create_trader_api_key(
+        trader_id,
+        name=name,
+        key_prefix=api_key_prefix(plaintext),
+        key_hash=hash_api_key(plaintext),
+    )
+    return {
+        "id": row["id"],
+        "trader_id": row["trader_id"],
+        "name": row["name"],
+        "key_prefix": row["key_prefix"],
+        "created_at": row["created_at"],
+        "api_key": plaintext,
+    }
+
+
+@app.delete("/admin/api-keys/{key_id}")
+def admin_revoke_trader_api_key(key_id: str, actor: dict = Depends(get_admin_actor)):
+    if not db.revoke_trader_api_key(key_id):
+        raise HTTPException(404, "Active API key not found.")
+    return {"ok": True}
 
 
 @app.get("/admin/memberships")

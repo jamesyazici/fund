@@ -28,11 +28,13 @@ running on a trader's laptop. So three things live behind a trusted backend:
  Trader's machine            Backend (FastAPI, holds secrets)         External
  ────────────────            ────────────────────────────────        ──────────
  import rqfc
- rqfc.login(email, pw) ─────► (Supabase Auth verifies password) ◄───► Supabase Auth
-        ◄───────────────────  returns JWT (identity token)
+ rqfc.login(email, pw) ─────► POST /auth/login
+                              Supabase Auth verifies password ──────► Supabase Auth
+                              map auth user → trader row
+        ◄───────────────────  returns backend session token
  account = rqfc.pod(id)
- account.buy("AAPL", 10) ───► POST /orders  (Authorization: Bearer JWT)
-                              1. verify JWT → trader
+ account.buy("AAPL", 10) ───► POST /orders  (Authorization: Bearer backend token)
+                              1. verify backend session/API key → trader
                               2. check membership / is_admin for pod
                               3. load pod's Alpaca keys
                               4. submit order ──────────────────────► Alpaca
@@ -42,9 +44,43 @@ running on a trader's laptop. So three things live behind a trusted backend:
  React dashboard ───────────────────────────────────────────────► Supabase (public read)
 ```
 
-The package is a **thin client**: authenticate, then make HTTP calls. All the
-Alpaca logic (the current `trading.py` / `account.py` / `market_data.py`) moves
-**server-side** into the backend, where it can run with the pod's keys.
+The package is a **thin client**: authenticate with the RQFC backend, then make
+HTTP calls. The client should not require traders to configure Supabase project
+URLs or anon keys. Those are backend implementation details. All Alpaca logic
+stays **server-side** in the backend, where it can run with the pod's keys.
+
+## Production trader experience
+
+The production experience should be:
+
+```bash
+pip install rqfc
+```
+
+```python
+import rqfc
+
+rqfc.login("alice@example.com", "password")
+account = rqfc.pod("Alpha Equities")
+account.buy("AAPL", 10)
+```
+
+For automated strategies, admins can issue a revocable RQFC API key from the
+admin portal:
+
+```python
+import rqfc
+
+rqfc.login(api_key="rqfc_live_...")
+account = rqfc.pod("Alpha Equities")
+account.buy("AAPL", 10)
+```
+
+Traders should never need to know or configure `SUPABASE_URL`,
+`SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, or
+Alpaca API keys. The only optional client-side configuration is
+`RQFC_BACKEND_URL`, used for local development or staging. The published package
+should default to the production backend, for example `https://api.rqfc.fund`.
 
 ## Components
 
@@ -96,7 +132,7 @@ service-role key, Supabase JWT secret, Alpaca keys) live in the backend env.
 ```python
 import rqfc
 
-rqfc.login("alice@rqfc.club", "password")   # → Supabase Auth, caches JWT
+rqfc.login("alice@example.com", "password")   # → backend /auth/login, caches token
 account = rqfc.pod("Alpha Equities")         # pick a pod you're allowed to trade
 account.buy("AAPL", 10)                       # → POST backend /orders
 account.positions()                           # → GET backend /pods/{id}/positions
@@ -104,7 +140,7 @@ account.positions()                           # → GET backend /pods/{id}/posit
 # admins only
 admin = rqfc.admin()
 admin.create_pod("Vol Arb", "options", capital=100_000)
-admin.add_trader("bob@rqfc.club", pod="Vol Arb", role="trader")
+admin.add_trader("bob@example.com", pod="Vol Arb", role="trader")
 admin.allocate_capital("Vol Arb", 150_000)
 ```
 The client keeps the same friendly method names (`buy`, `sell`, `short`, …) but
@@ -112,14 +148,21 @@ each one is now an authenticated HTTP call, not a direct Alpaca call.
 
 ### 4. Admin portal
 A self-contained web UI served by the backend at `GET /portal`
-(`backend/app/portal/index.html`, vanilla JS — no build step). It logs in with a
-shared username/password (`ADMIN_PORTAL_USERNAME`/`ADMIN_PORTAL_PASSWORD`,
-default `elbow`/`grease`) → a portal token, and drives the `/admin/*` API to
-create pods, create rqfc accounts (Supabase Auth user + trader), set Alpaca
+(`backend/app/portal/index.html`, vanilla JS — no build step). It signs in with
+Google Identity Services, sends the Google ID token to `POST /admin/login`, and
+receives a portal token only if the verified email is in `ADMIN_GOOGLE_EMAILS`.
+It drives the `/admin/*` API to create pods, create rqfc accounts (Supabase Auth user + trader), set Alpaca
 credentials, allocate capital, and assign traders. It lives on the backend (not
 the public GitHub Pages dashboard) because those actions need the service-role
-key. `/admin/*` accepts the portal token **or** a Supabase admin JWT, so the
+key. `/admin/*` accepts the portal token **or** an admin trader bearer, so the
 portal and the Python admin client are interchangeable.
+
+The portal is also the control plane for trader API keys:
+- Create a key for a trader with a friendly name.
+- Show the plaintext key exactly once.
+- Store only a server-peppered hash in the database.
+- List key metadata: prefix, name, created time, last-used time, revoked time.
+- Revoke keys without deleting audit history.
 
 ### 5. React dashboard
 Read-only, public. Already reads `pods`, `members` (view), `trades`,
@@ -153,9 +196,13 @@ per-pod secret storage entirely.
 
 ## Security notes
 - Traders never receive Alpaca keys; the backend holds them.
+- Traders do not need Supabase URL/anon-key configuration in production; the
+  backend owns Supabase Auth interaction.
 - `pod_alpaca_credentials` is unreadable except by the service role. Use Supabase
   Vault / pgsodium to encrypt at rest in production.
-- JWTs are short-lived; the client refreshes via Supabase.
+- Backend session tokens are short-lived. Long-running automated strategies
+  should use revocable RQFC API keys scoped by trader permissions.
+- RQFC API keys are stored only as hashes, with a server-side pepper/secret.
 - A trader can only act on pods in their `pod_memberships` (admins bypass).
 
 ## Build phases
@@ -168,3 +215,51 @@ per-pod secret storage entirely.
    `admin`).
 5. **Sync job** — scheduled `/sync` to refresh positions / NAV / metrics per pod.
 6. **Auth setup** — create Supabase Auth users for traders; wire `auth_user_id`.
+
+## Streamlined-auth implementation TODO
+
+### Database
+- [x] Add `trader_api_keys` table.
+- [x] Store `key_hash`, `key_prefix`, `name`, `trader_id`, `created_at`,
+      `last_used_at`, and `revoked_at`.
+- [x] Enable RLS with no public write policies; backend service role manages rows.
+- [x] Add indexes for `trader_id`, `key_hash`, and active key lookup.
+
+### Backend auth
+- [x] Add `POST /auth/login` so the backend, not the client, talks to Supabase
+      Auth for email/password login.
+- [x] Issue short-lived backend session tokens signed with a backend secret.
+- [x] Update `get_current_trader` to accept backend session tokens.
+- [x] Preserve existing Supabase-JWT support during migration.
+- [x] Add API-key bearer auth using hashed key lookup.
+- [x] Update API-key `last_used_at` on successful authentication.
+
+### Backend admin API
+- [x] Add `GET /admin/traders/{trader_id}/api-keys`.
+- [x] Add `POST /admin/traders/{trader_id}/api-keys`.
+- [x] Return plaintext API key only once at creation time.
+- [x] Add `DELETE /admin/api-keys/{key_id}` to revoke keys.
+- [x] Keep admin auth compatible with both portal tokens and admin trader tokens.
+
+### Admin portal
+- [x] Add API-key management to the trader admin screen.
+- [x] Let admins select a trader, list keys, create a named key, copy the new key,
+      and revoke old keys.
+- [x] Clearly indicate that plaintext keys are shown once.
+
+### Python package
+- [x] Remove Supabase URL/anon-key requirements from `rqfc.configure` and
+      `rqfc.login`.
+- [x] Default to production backend URL; allow `RQFC_BACKEND_URL` or explicit
+      `backend_url` override for staging/local dev.
+- [x] Support `rqfc.login(email, password)` via backend `/auth/login`.
+- [x] Support `rqfc.login(api_key="rqfc_live_...")` for automated strategies.
+- [x] Preserve existing `rqfc.pod`, `Account`, `rqfc.admin`, and `Admin` APIs.
+
+### Deployment
+- [ ] Deploy backend with `SUPABASE_URL`, `SUPABASE_ANON_KEY`,
+      `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, Alpaca credentials,
+      and backend signing/pepper secrets.
+- [ ] Publish `rqfc` with production backend default.
+- [ ] Keep dashboard public read-only on Supabase anon key.
+- [ ] Document local/staging overrides for admins and developers.

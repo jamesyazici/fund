@@ -50,7 +50,11 @@ class MembershipRequest(BaseModel):
 
 
 class PortalLogin(BaseModel):
-    username: str
+    credential: str
+
+
+class TraderLogin(BaseModel):
+    email: str
     password: str
 
 
@@ -59,3 +63,7 @@ class CreateTraderRequest(BaseModel):
     password: str
     display_name: str
     is_admin: bool = False
+
+
+class CreateTraderApiKeyRequest(BaseModel):
+    name: str = "default"

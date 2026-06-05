@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>RQFC Admin Portal</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root { --bg:#0b0d12; --panel:#151922; --panel2:#1c2230; --line:#262d3d;
           --text:#e6e9ef; --muted:#8b93a7; --accent:#6366f1; --green:#34d399; --red:#f87171; }
@@ -31,6 +32,8 @@
   table { width:100%; border-collapse:collapse; }
   th,td { text-align:left; padding:.5rem .4rem; border-bottom:1px solid var(--line); font-size:13px; }
   th { color:var(--muted); font-weight:500; }
+  code { display:block; overflow:auto; padding:.6rem; border-radius:8px; background:var(--bg);
+         border:1px solid var(--line); color:var(--green); }
   .tag { font-size:11px; padding:.1rem .45rem; border-radius:999px; border:1px solid var(--line); }
   .tag.ok { color:var(--green); border-color:#2f5d4b; }
   .tag.no { color:var(--muted); }
@@ -48,7 +51,8 @@
   #toast.err { border-color:var(--red); color:var(--red); }
   #toast.ok { border-color:var(--green); color:var(--green); }
   .center { min-height:100vh; display:grid; place-items:center; }
-  .login { width:320px; }
+  .login { width:360px; }
+  #googleSignIn { min-height:44px; display:flex; align-items:center; margin-top:.8rem; }
   fieldset { border:1px solid var(--line); border-radius:10px; margin:0 0 .8rem; padding:.8rem; }
   legend { color:var(--muted); font-size:12px; padding:0 .35rem; }
 </style>
@@ -59,12 +63,9 @@
 <div id="loginView" class="center">
   <div class="panel login">
     <h1>RQFC Admin</h1>
-    <p class="muted" style="margin-top:0">Sign in to manage pods & traders.</p>
-    <label>Username</label>
-    <input id="username" autocomplete="username" placeholder="username" style="width:100%" />
-    <label>Password</label>
-    <input id="password" type="password" autocomplete="current-password" placeholder="password" style="width:100%" />
-    <button style="width:100%; margin-top:.8rem" onclick="login()">Sign in</button>
+    <p class="muted" style="margin-top:0">Sign in with an approved Google account to manage pods & traders.</p>
+    <div id="googleSignIn"></div>
+    <p id="loginHint" class="muted" style="margin-bottom:0">Loading Google sign-in...</p>
   </div>
 </div>
 
@@ -125,7 +126,7 @@
       <h2>Create rqfc account</h2>
       <div class="grid2">
         <div><label>Display name</label><input id="tName" placeholder="Alice Chen" /></div>
-        <div><label>Email (login)</label><input id="tEmail" placeholder="alice@rqfc.club" /></div>
+        <div><label>Email (login)</label><input id="tEmail" placeholder="alice@example.com" /></div>
         <div><label>Password</label><input id="tPass" type="password" placeholder="temporary password" /></div>
         <div><label>Role</label>
           <select id="tAdmin"><option value="false">trader</option><option value="true">admin</option></select></div>
@@ -137,6 +138,22 @@
       <h2>Traders</h2>
       <table id="tradersTable"><thead><tr>
         <th>Name</th><th>Trader ID</th><th>Role</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+
+    <div class="panel">
+      <h2>Trader API keys</h2>
+      <div class="row" style="margin-bottom:.6rem">
+        <div><label>Trader</label><select id="keyTrader" onchange="loadApiKeys()"></select></div>
+        <div><label>Key name</label><input id="keyName" placeholder="laptop strategy" /></div>
+        <div style="align-self:end"><button onclick="createApiKey()">Create key</button></div>
+      </div>
+      <div id="newKeyBox" class="hidden" style="margin:.8rem 0">
+        <label>New API key - copy now, it will not be shown again</label>
+        <code id="newKeyValue"></code>
+      </div>
+      <table id="apiKeysTable"><thead><tr>
+        <th>Name</th><th>Key ID</th><th>Created</th><th>Last used</th><th></th>
       </tr></thead><tbody></tbody></table>
     </div>
   </section>
@@ -171,7 +188,8 @@
 <script>
 const TKEY = 'rqfc_portal_token';
 let token = localStorage.getItem(TKEY);
-let pods = [], traders = [];
+let pods = [], traders = [], apiKeys = [];
+let googleInitialized = false;
 
 function toast(msg, kind='ok') {
   const t = document.getElementById('toast');
@@ -192,20 +210,22 @@ async function api(method, path, body) {
   return data;
 }
 
-async function login() {
-  const username = document.getElementById('username').value.trim();
-  const password = document.getElementById('password').value;
+async function handleGoogleCredential(response) {
   try {
-    const r = await api('POST', '/admin/login', {username, password});
+    const r = await api('POST', '/admin/login', {credential: response.credential});
     token = r.token; localStorage.setItem(TKEY, token);
+    if (r.admin && r.admin.email) localStorage.setItem('rqfc_portal_admin_email', r.admin.email);
     enterApp();
   } catch (e) { toast(e.message, 'err'); }
 }
 
 function logout() {
   token = null; localStorage.removeItem(TKEY);
+  localStorage.removeItem('rqfc_portal_admin_email');
+  if (window.google && google.accounts && google.accounts.id) google.accounts.id.disableAutoSelect();
   document.getElementById('appView').classList.add('hidden');
   document.getElementById('loginView').classList.remove('hidden');
+  initGoogleSignIn();
 }
 
 function enterApp() {
@@ -285,6 +305,11 @@ async function loadTraders() {
   }
   document.getElementById('mTrader').innerHTML =
     traders.map(t => `<option value="${t.id}">${t.display_name}</option>`).join('');
+  const keyTrader = document.getElementById('keyTrader');
+  const selected = keyTrader.value;
+  keyTrader.innerHTML = traders.map(t => `<option value="${t.id}">${t.display_name}</option>`).join('');
+  if (selected && traders.some(t => t.id === selected)) keyTrader.value = selected;
+  loadApiKeys();
 }
 
 async function createTrader() {
@@ -295,6 +320,79 @@ async function createTrader() {
   try { await api('POST', '/admin/traders', body);
         toast('Account created for ' + body.email); clearTrader(); loadTraders(); }
   catch (e) { toast(e.message, 'err'); }
+}
+
+async function loadApiKeys() {
+  const traderId = val('keyTrader');
+  const tb = document.querySelector('#apiKeysTable tbody'); tb.innerHTML = '';
+  document.getElementById('newKeyBox').classList.add('hidden');
+  document.getElementById('newKeyValue').textContent = '';
+  apiKeys = [];
+  if (!traderId) return;
+  try {
+    const r = await api('GET', `/admin/traders/${traderId}/api-keys`);
+    apiKeys = Array.isArray(r) ? r : (r.api_keys || r.keys || []);
+    if (!apiKeys.length) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td class="muted" colspan="5">No API keys</td>';
+      tb.appendChild(tr);
+      return;
+    }
+    for (const k of apiKeys) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${k.name || ''}</td><td class="muted">${k.id}</td>
+        <td>${fmtDate(k.created_at)}</td><td>${fmtDate(k.last_used_at)}</td>
+        <td><button class="danger" onclick="revokeApiKey('${k.id}')">Revoke</button></td>`;
+      tb.appendChild(tr);
+    }
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function createApiKey() {
+  const traderId = val('keyTrader');
+  const name = val('keyName');
+  if (!traderId) return toast('Pick a trader', 'err');
+  if (!name) return toast('Key name required', 'err');
+  try {
+    const r = await api('POST', `/admin/traders/${traderId}/api-keys`, {name});
+    const plaintext = r.api_key || r.key || r.plaintext_key || '';
+    if (!plaintext) throw new Error('API key created, but no plaintext key was returned.');
+    document.getElementById('newKeyValue').textContent = plaintext;
+    document.getElementById('newKeyBox').classList.remove('hidden');
+    document.getElementById('keyName').value = '';
+    toast('API key created');
+    await refreshApiKeysTable(traderId);
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function refreshApiKeysTable(traderId) {
+  const tb = document.querySelector('#apiKeysTable tbody'); tb.innerHTML = '';
+  const r = await api('GET', `/admin/traders/${traderId}/api-keys`);
+  apiKeys = Array.isArray(r) ? r : (r.api_keys || r.keys || []);
+  if (!apiKeys.length) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td class="muted" colspan="5">No API keys</td>';
+    tb.appendChild(tr);
+    return;
+  }
+  for (const k of apiKeys) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${k.name || ''}</td><td class="muted">${k.id}</td>
+      <td>${fmtDate(k.created_at)}</td><td>${fmtDate(k.last_used_at)}</td>
+      <td><button class="danger" onclick="revokeApiKey('${k.id}')">Revoke</button></td>`;
+    tb.appendChild(tr);
+  }
+}
+
+async function revokeApiKey(keyId) {
+  if (!confirm('Revoke this API key?')) return;
+  try {
+    await api('DELETE', `/admin/api-keys/${keyId}`);
+    document.getElementById('newKeyBox').classList.add('hidden');
+    document.getElementById('newKeyValue').textContent = '';
+    toast('API key revoked');
+    loadApiKeys();
+  } catch (e) { toast(e.message, 'err'); }
 }
 
 async function loadMemberships() {
@@ -325,13 +423,48 @@ async function unassign(podId, traderId) {
 }
 
 const val = id => document.getElementById(id).value.trim();
+const fmtDate = d => d ? new Date(d).toLocaleString() : '-';
 function clearPod(){ ['pName','pDesc','pKey','pSecret','pAcct'].forEach(i=>document.getElementById(i).value=''); }
 function clearTrader(){ ['tName','tEmail','tPass'].forEach(i=>document.getElementById(i).value=''); }
 
-document.getElementById('password').addEventListener('keydown', e => { if (e.key==='Enter') login(); });
+async function initGoogleSignIn() {
+  if (token || googleInitialized) return;
+  try {
+    const cfg = await fetch('/admin/google-config').then(r => r.json());
+    if (!cfg.client_id) {
+      document.getElementById('loginHint').textContent = 'GOOGLE_OAUTH_CLIENT_ID is not configured on the backend.';
+      return;
+    }
+    const ready = () => window.google && google.accounts && google.accounts.id;
+    let tries = 0;
+    while (!ready() && tries < 50) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      tries += 1;
+    }
+    if (!ready()) {
+      document.getElementById('loginHint').textContent = 'Google sign-in script did not load.';
+      return;
+    }
+    google.accounts.id.initialize({
+      client_id: cfg.client_id,
+      callback: handleGoogleCredential,
+    });
+    google.accounts.id.renderButton(
+      document.getElementById('googleSignIn'),
+      {theme:'filled_blue', size:'large', type:'standard', width:320},
+    );
+    document.getElementById('loginHint').textContent =
+      'Allowed admin: ' + ((cfg.admin_emails || []).join(', ') || 'not configured');
+    googleInitialized = true;
+  } catch (e) {
+    document.getElementById('loginHint').textContent = 'Could not initialize Google sign-in.';
+    toast(e.message, 'err');
+  }
+}
 
 // boot
 if (token) enterApp();
+else initGoogleSignIn();
 </script>
 </body>
 </html>

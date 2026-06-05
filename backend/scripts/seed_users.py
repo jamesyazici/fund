@@ -17,16 +17,15 @@ from supabase import create_client
 
 load_dotenv()
 
-# ── Edit these ────────────────────────────────────────────────────────────────
-SAMPLE_USERS = [
-    {"email": "admin@rqfc.club",  "password": "changeme-admin", "name": "Club Admin", "is_admin": True},
-    {"email": "alice@rqfc.club",  "password": "changeme-alice", "name": "Alice",       "is_admin": False},
-    {"email": "bob@rqfc.club",    "password": "changeme-bob",   "name": "Bob",         "is_admin": False},
-]
+# Fill this locally before running. Do not commit real emails/passwords here.
+SAMPLE_USERS = []
 # ──────────────────────────────────────────────────────────────────────────────
 
 
 def main() -> None:
+    if not SAMPLE_USERS:
+        raise RuntimeError("Edit SAMPLE_USERS locally before running this script.")
+
     url = os.environ["SUPABASE_URL"]
     service_key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
     sb = create_client(url, service_key)

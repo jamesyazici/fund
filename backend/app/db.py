@@ -39,6 +39,17 @@ def get_trader_by_auth_id(auth_user_id: str):
     return res.data[0] if res.data else None
 
 
+def get_trader_by_id(trader_id: str):
+    res = (
+        sb().table("traders")
+        .select("id, display_name, is_admin, auth_user_id")
+        .eq("id", trader_id)
+        .limit(1)
+        .execute()
+    )
+    return res.data[0] if res.data else None
+
+
 def list_traders():
     res = sb().table("traders").select("id, display_name, is_admin, auth_user_id, created_at").execute()
     return res.data or []
@@ -58,6 +69,58 @@ def create_trader(display_name: str, is_admin: bool = False, auth_user_id: str =
         "is_admin": is_admin,
         "auth_user_id": auth_user_id,
     }).execute().data[0]
+
+
+def list_trader_api_keys(trader_id: str) -> list[dict]:
+    res = (
+        sb().table("trader_api_keys")
+        .select("id, trader_id, name, key_prefix, revoked_at, last_used_at, created_at")
+        .eq("trader_id", trader_id)
+        .order("created_at", desc=True)
+        .execute()
+    )
+    return res.data or []
+
+
+def create_trader_api_key(trader_id: str, *, name: str, key_prefix: str, key_hash: str) -> dict:
+    return (
+        sb().table("trader_api_keys")
+        .insert({
+            "trader_id": trader_id,
+            "name": name,
+            "key_prefix": key_prefix,
+            "key_hash": key_hash,
+        })
+        .execute()
+        .data[0]
+    )
+
+
+def revoke_trader_api_key(key_id: str) -> bool:
+    res = (
+        sb().table("trader_api_keys")
+        .update({"revoked_at": _now()})
+        .eq("id", key_id)
+        .is_("revoked_at", "null")
+        .execute()
+    )
+    return bool(res.data)
+
+
+def get_active_api_key_by_hash(key_hash: str):
+    res = (
+        sb().table("trader_api_keys")
+        .select("id, trader_id, traders(id, display_name, is_admin, auth_user_id)")
+        .eq("key_hash", key_hash)
+        .is_("revoked_at", "null")
+        .limit(1)
+        .execute()
+    )
+    return res.data[0] if res.data else None
+
+
+def mark_api_key_used(key_id: str) -> None:
+    sb().table("trader_api_keys").update({"last_used_at": _now()}).eq("id", key_id).execute()
 
 
 def get_membership(pod_id: str, trader_id: str):

@@ -35,6 +35,9 @@ Fill `.env`:
 - `ALPACA_API_KEY` / `ALPACA_API_SECRET` — your paper keys. (These act as the
   fallback Alpaca account for any pod without its own stored creds, so a single
   pod works immediately.)
+- `GOOGLE_OAUTH_CLIENT_ID` — a Google OAuth **Web application** client id whose
+  authorized JavaScript origin includes `http://localhost:8000`
+- `ADMIN_GOOGLE_EMAILS` — comma-separated Google emails allowed into the admin portal
 
 Run it:
 ```bash
@@ -45,10 +48,9 @@ Check: `curl localhost:8000/health` → `{"ok":true}`.
 ---
 
 ## 3. Admin portal — create pods, accounts, assignments
-Open **http://localhost:8000/portal** and sign in:
-
-> username: **elbow**  password: **grease**
-> (override with `ADMIN_PORTAL_USERNAME` / `ADMIN_PORTAL_PASSWORD` in `.env`)
+Open **http://localhost:8000/portal** and sign in with an allowlisted Google
+account. The backend verifies the Google ID token using `GOOGLE_OAUTH_CLIENT_ID`
+and only issues a portal token if the email is listed in `ADMIN_GOOGLE_EMAILS`.
 
 In the portal:
 1. **Pods** → create a pod (e.g. "Test Pod", equities, capital 100000). Leave the
@@ -77,7 +79,7 @@ export RQFC_SUPABASE_ANON_KEY=<anon-key>
 Use the email + password you set for a trader in the portal.
 ```python
 import rqfc
-rqfc.login("alice@rqfc.club", "the-password-you-set")
+rqfc.login("alice@example.com", "the-password-you-set")
 rqfc.whoami()                       # shows Test Pod
 
 acct = rqfc.pod("Test Pod")
@@ -107,7 +109,7 @@ position and NAV appear. Or verify directly in Supabase → **Table Editor → t
 ---
 
 ## What "done" looks like
-- [ ] Portal (`/portal`, elbow/grease) creates pods, trader accounts, and assignments
+- [ ] Portal (`/portal`, Google admin login) creates pods, trader accounts, and assignments
 - [ ] Non-admin Supabase logins get 403 on `/admin/*`
 - [ ] A trader can trade only their assigned pod(s)
 - [ ] Orders reach Alpaca and a `trades` row is written with the right `trader_id`

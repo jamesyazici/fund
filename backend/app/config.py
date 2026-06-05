@@ -28,10 +28,15 @@ class Settings:
             o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()
         ]
 
-        # Admin portal login. Defaults to the requested elbow/grease; override
-        # in production via env. Portal tokens are signed with this secret.
-        self.admin_portal_username = os.environ.get("ADMIN_PORTAL_USERNAME", "elbow")
-        self.admin_portal_password = os.environ.get("ADMIN_PORTAL_PASSWORD", "grease")
+        # Admin portal Google auth. Create a Google OAuth Web client and set its
+        # client id here. ADMIN_GOOGLE_EMAILS is comma-separated.
+        self.google_oauth_client_id = os.environ.get("GOOGLE_OAUTH_CLIENT_ID", "")
+        self.admin_google_emails = {
+            e.strip().lower()
+            for e in os.environ.get("ADMIN_GOOGLE_EMAILS", "").split(",")
+            if e.strip()
+        }
+        # Portal tokens are signed with this secret.
         self.admin_portal_secret = os.environ.get("ADMIN_PORTAL_SECRET") or self.supabase_jwt_secret
 
 

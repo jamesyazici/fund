@@ -1,24 +1,21 @@
 # rqfc — RQFC fund trading client
 #
 # A thin, authenticated client for the RQFC trading backend. Traders log in with
-# Supabase credentials (issued by an admin); the backend holds each pod's Alpaca
-# keys and submits trades on their behalf. No Alpaca keys ever touch this client.
-#
-# Setup (once):
-#   export RQFC_BACKEND_URL=https://your-backend
-#   export RQFC_SUPABASE_URL=https://<project>.supabase.co
-#   export RQFC_SUPABASE_ANON_KEY=<anon-key>
+# credentials or an API key issued by an admin; the backend holds each pod's
+# Alpaca keys and submits trades on their behalf. No Alpaca keys ever touch this
+# client.
 #
 # Trader usage:
 #   import rqfc
-#   rqfc.login("alice@rqfc.club", "password")
+#   rqfc.login("alice@example.com", "password")
+#   # or: rqfc.login(api_key="rqfc_...")
 #   acct = rqfc.pod("Alpha Equities")   # a pod you're assigned to
 #   acct.buy("AAPL", 10)
 #   acct.positions()
 #   acct.sync()                          # refresh the dashboard
 #
 # Admin usage:
-#   rqfc.login("admin@rqfc.club", "password")
+#   rqfc.login("admin@example.com", "password")
 #   admin = rqfc.admin()
 #   pod = admin.create_pod("Vol Arb", "options", capital=100000,
 #                          alpaca_api_key="PK...", alpaca_api_secret="...")
@@ -33,30 +30,44 @@ from .client import Account
 from .admin import Admin
 
 __version__ = "1.0.0"
+DEFAULT_BACKEND_URL = "https://api.rqfc.fund"
 
 _session: Session | None = None
 
 
-def configure(backend_url: str = None, supabase_url: str = None, anon_key: str = None) -> Session:
-    """Set connection details. Falls back to RQFC_* environment variables."""
+def configure(backend_url: str = None) -> Session:
+    """Set backend connection details.
+
+    Defaults to RQFC_BACKEND_URL, then the production RQFC API. Local dev can
+    pass backend_url="http://localhost:8000".
+    """
     global _session
-    backend_url = backend_url or os.environ.get("RQFC_BACKEND_URL", "http://localhost:8000")
-    supabase_url = supabase_url or os.environ.get("RQFC_SUPABASE_URL")
-    anon_key = anon_key or os.environ.get("RQFC_SUPABASE_ANON_KEY")
-    if not supabase_url or not anon_key:
-        raise RuntimeError(
-            "Missing Supabase connection. Set RQFC_SUPABASE_URL and "
-            "RQFC_SUPABASE_ANON_KEY, or pass them to rqfc.login(...)."
-        )
-    _session = Session(backend_url, supabase_url, anon_key)
+    backend_url = backend_url or os.environ.get("RQFC_BACKEND_URL", DEFAULT_BACKEND_URL)
+    _session = Session(backend_url)
     return _session
 
 
-def login(email: str, password: str, *, backend_url: str = None,
-          supabase_url: str = None, anon_key: str = None) -> dict:
+def login(email: str = None, password: str = None, *, api_key: str = None,
+          backend_url: str = None) -> dict:
     """Authenticate and start a session. Returns your profile."""
-    sess = configure(backend_url, supabase_url, anon_key)
-    sess.login(email, password)
+    sess = configure(backend_url)
+    if api_key:
+        if email or password:
+            raise ValueError("Use either email/password or api_key, not both.")
+        sess.use_api_key(api_key)
+    else:
+        if not email or not password:
+            raise ValueError("Call rqfc.login(email, password) or rqfc.login(api_key='rqfc_...').")
+        profile = sess.login(email, password)
+        if profile:
+            me = profile
+            tag = " (admin)" if me.get("is_admin") else ""
+            print(
+                f"Logged in as {me['display_name']}{tag}. "
+                f"Pods: {[p['pods']['name'] for p in me.get('pods', [])] or 'none assigned'}"
+            )
+            return me
+
     me = sess.get("/me")
     tag = " (admin)" if me.get("is_admin") else ""
     print(f"Logged in as {me['display_name']}{tag}. Pods: {[p['pods']['name'] for p in me['pods']] or 'none assigned'}")
@@ -65,7 +76,10 @@ def login(email: str, password: str, *, backend_url: str = None,
 
 def _require_session() -> Session:
     if _session is None or not _session.access_token:
-        raise RuntimeError("Not logged in. Call rqfc.login(email, password) first.")
+        raise RuntimeError(
+            "Not logged in. Call rqfc.login(email, password) or "
+            "rqfc.login(api_key='rqfc_...') first."
+        )
     return _session
 
 
@@ -84,4 +98,13 @@ def whoami() -> dict:
     return _require_session().get("/me")
 
 
-__all__ = ["configure", "login", "pod", "admin", "whoami", "Account", "Admin"]
+__all__ = [
+    "DEFAULT_BACKEND_URL",
+    "configure",
+    "login",
+    "pod",
+    "admin",
+    "whoami",
+    "Account",
+    "Admin",
+]
