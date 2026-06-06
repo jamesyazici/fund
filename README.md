@@ -18,4 +18,5 @@ A transparent, multi-pod paper-trading fund for RQFC.
 
 
 Developed by: Rahul Rajkumar with a little bit help from James Yazici (yea screw you James)
+
 Consulted & Mentored by the goat himself, Aryan Malik
