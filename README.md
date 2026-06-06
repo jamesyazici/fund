@@ -1,7 +1,5 @@
 # Fund (to be named)
 
-## Rahul Rajkumar & James Yazici
-
 A transparent, multi-pod paper-trading fund for RQFC.
 
 - **Pod** = one Alpaca account (a strategy team). **Trader** = one rqfc account.
@@ -17,3 +15,7 @@ A transparent, multi-pod paper-trading fund for RQFC.
 | `package/` | `rqfc` — thin Python client traders/admins use. |
 | `app/supabase/migrations/` | Postgres schema + demo seed. |
 | `docs/` | `ARCHITECTURE.md` (design), `RUNBOOK.md` (end-to-end setup). |
+
+
+Developed by: Rahul Rajkumar with a little bit help from James Yazici (yea screw you James)
+Consulted & Mentored by the goat himself, Aryan Malik
