@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { useNavHistory } from '@/hooks/useNavHistory'
 import { useMetrics } from '@/hooks/useMetrics'
+import { useIntradayNav } from '@/hooks/useLiveSnapshots'
 import { formatCompact, formatPct } from '@/lib/formatters'
 import { ASSET_CLASS_LABELS } from '@/lib/metrics'
 import { cn } from '@/lib/cn'
@@ -15,9 +16,11 @@ interface PodCardProps {
 }
 
 function Sparkline({ podId }: { podId: string }) {
+  const { data: intraday } = useIntradayNav(podId, 390)
   const { data: history } = useNavHistory(podId, 30)
-  if (!history?.length) return <div className="h-10" />
-  const data = history.map((r) => ({ v: Number(r.nav) }))
+  const rows = intraday?.length ? intraday : history
+  if (!rows?.length) return <div className="h-10" />
+  const data = rows.map((r) => ({ v: Number(r.nav) }))
   const first = data[0].v
   const last = data[data.length - 1].v
   const color = last >= first ? '#34d399' : '#f87171'

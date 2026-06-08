@@ -17,12 +17,16 @@ function TotalAUM({
   const totalStarting = pods.reduce((acc, p) => acc + p.allocated_capital, 0)
   const totalNav = livePods?.reduce((acc, p) => acc + Number(p.nav || 0), 0) ?? totalStarting
   const grossNotional = livePods?.reduce((acc, p) => acc + Number(p.gross_notional || 0), 0) ?? 0
+  const liveGain = livePods?.reduce((acc, p) => acc + Number(p.live_gain || 0), 0) ?? (totalNav - totalStarting)
+  const priorEquity = livePods?.reduce((acc, p) => acc + Number(p.account?.last_equity || 0), 0) ?? 0
   const liveCount = livePods?.filter((p) => p.live).length ?? 0
   const totalReturn = totalStarting ? totalNav / totalStarting - 1 : null
+  const sessionReturn = priorEquity ? totalNav / priorEquity - 1 : null
   const positive = (totalReturn ?? 0) >= 0
+  const sessionPositive = (sessionReturn ?? liveGain) >= 0
 
   return (
-    <section className="overflow-hidden rounded-lg border border-zinc-800 bg-[#070908] text-white shadow-[0_24px_80px_rgba(0,0,0,.28)]">
+    <section className="overflow-hidden rounded-lg border border-[#17221b] bg-[#070908] text-white shadow-[0_24px_80px_rgba(0,0,0,.28)]">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 bg-[#0b0f0d] px-4 py-2">
         <div className="flex flex-wrap items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
           <span className="flex items-center gap-1.5 text-[#7cffb2]">
@@ -39,10 +43,10 @@ function TotalAUM({
       <div className="grid gap-5 p-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(380px,.9fr)] sm:p-6">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.24em] text-[#7cffb2]">
-            RQFC live transparency
+            RQFC / public fund tape
           </p>
-          <h1 className="mt-3 max-w-4xl text-3xl font-black tracking-tight text-white sm:text-5xl">
-            Live fund capital, positions, and trades.
+          <h1 className="mt-3 max-w-4xl text-4xl font-black tracking-tight text-white sm:text-6xl">
+            Fund transparency.
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-400">
             A public viewing surface for students to follow what the fund owns, how capital is allocated, and what orders were recorded.
@@ -72,9 +76,10 @@ function TotalAUM({
             </p>
             <p className="mt-2 text-xl font-extrabold text-white tabular-nums">{formatCurrency(grossNotional, 0)}</p>
           </div>
-          <div className="rounded-lg border border-zinc-800 bg-[#0d1210] p-4">
-            <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Allocated</p>
-            <p className="mt-2 text-xl font-extrabold text-white tabular-nums">{formatCurrency(totalStarting, 0)}</p>
+          <div className={cn('rounded-lg border p-4', sessionPositive ? 'border-[#7cffb2]/25 bg-[#0d1210] text-[#7cffb2]' : 'border-red-400/25 bg-[#0d1210] text-red-300')}>
+            <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">Live gain</p>
+            <p className="mt-2 text-xl font-extrabold tabular-nums">{formatCurrency(liveGain, 0)}</p>
+            <p className="mt-1 text-xs text-zinc-500">{sessionReturn == null ? 'session pending' : `${formatPct(sessionReturn)} today`}</p>
           </div>
         </div>
       </div>

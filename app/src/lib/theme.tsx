@@ -29,13 +29,13 @@ function applyClass(resolved: Resolved) {
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => {
-    if (typeof window === 'undefined') return 'system'
-    return (localStorage.getItem(STORAGE_KEY) as Theme) || 'system'
+    if (typeof window === 'undefined') return 'dark'
+    return (localStorage.getItem(STORAGE_KEY) as Theme) || 'dark'
   })
 
   const [resolvedTheme, setResolvedTheme] = useState<Resolved>(() => {
     if (typeof window === 'undefined') return 'dark'
-    const t = (localStorage.getItem(STORAGE_KEY) as Theme) || 'system'
+    const t = (localStorage.getItem(STORAGE_KEY) as Theme) || 'dark'
     return t === 'system' ? getSystem() : t
   })
 

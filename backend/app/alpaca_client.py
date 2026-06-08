@@ -124,11 +124,15 @@ def cancel_order(pod_id: str, order_id: str) -> None:
 
 def get_account(pod_id: str) -> dict:
     acct = trading_client(pod_id).get_account()
+    last_equity = float(acct.last_equity) if getattr(acct, "last_equity", None) else None
+    equity = float(acct.equity)
     return {
-        "equity": float(acct.equity),
+        "equity": equity,
         "cash": float(acct.cash),
         "buying_power": float(acct.buying_power),
         "portfolio_value": float(acct.portfolio_value),
+        "last_equity": last_equity,
+        "session_return": ((equity / last_equity) - 1) if last_equity else None,
         "status": str(acct.status),
     }
 
@@ -165,6 +169,31 @@ def get_nav_history(pod_id: str, days: int = 365) -> list:
             "nav": round(equity, 2),
             "cash": 0,
             "daily_return": round(daily_return, 6) if daily_return is not None else None,
+        })
+        prev_equity = equity
+    return rows
+
+
+def get_intraday_nav_history(pod_id: str, minutes: int = 390) -> list:
+    """Minute NAV rows from Alpaca portfolio history for live charts."""
+    tc = trading_client(pod_id)
+    minutes = max(1, min(int(minutes or 390), 1440))
+    date_start = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).strftime("%Y-%m-%d")
+    hist = tc.get_portfolio_history(
+        GetPortfolioHistoryRequest(date_start=date_start, timeframe="1Min")
+    )
+    rows = []
+    prev_equity = None
+    for ts, equity in zip(hist.timestamp, hist.equity):
+        if equity is None:
+            continue
+        equity = float(equity)
+        timestamp = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+        minute_return = ((equity / prev_equity - 1) if prev_equity else None)
+        rows.append({
+            "timestamp": timestamp,
+            "nav": round(equity, 2),
+            "minute_return": round(minute_return, 6) if minute_return is not None else None,
         })
         prev_equity = equity
     return rows

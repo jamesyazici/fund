@@ -16,7 +16,15 @@ const LiveAccountSchema = z.object({
   cash: z.number(),
   buying_power: z.number(),
   portfolio_value: z.number(),
+  last_equity: z.number().nullable().optional(),
+  session_return: z.number().nullable().optional(),
   status: z.string(),
+})
+
+const IntradayNavRowSchema = z.object({
+  timestamp: z.string(),
+  nav: z.number(),
+  minute_return: z.number().nullable(),
 })
 
 export const LivePodSnapshotSchema = z.object({
@@ -36,7 +44,9 @@ export const LivePodSnapshotSchema = z.object({
   gross_notional: z.number(),
   net_notional: z.number(),
   unrealized_pnl: z.number(),
+  live_gain: z.number(),
   daily_return: z.number().nullable(),
+  session_return: z.number().nullable(),
   total_return: z.number().nullable(),
   error: z.string().nullable(),
 })
@@ -47,6 +57,7 @@ const LiveSnapshotsResponseSchema = z.object({
 
 export type LivePodSnapshot = z.infer<typeof LivePodSnapshotSchema>
 export type LivePosition = z.infer<typeof LivePositionSchema>
+export type IntradayNavRow = z.infer<typeof IntradayNavRowSchema>
 
 export function useLiveSnapshots() {
   return useQuery({
@@ -72,5 +83,24 @@ export function useLivePodSnapshot(podId: string) {
     enabled: !!podId,
     refetchInterval: 5_000,
     staleTime: 2_000,
+  })
+}
+
+export function useIntradayNav(podId: string, minutes = 390) {
+  return useQuery({
+    queryKey: ['public-intraday-nav', podId, minutes],
+    queryFn: async () => {
+      const response = await fetch(backendUrl(`/public/pods/${podId}/intraday-nav?minutes=${minutes}`))
+      if (!response.ok) throw new Error(`Intraday NAV failed: ${response.status}`)
+      const data = z.object({
+        pod_id: z.string(),
+        timeframe: z.literal('1Min'),
+        rows: z.array(IntradayNavRowSchema),
+      }).parse(await response.json())
+      return data.rows
+    },
+    enabled: !!podId,
+    refetchInterval: 60_000,
+    staleTime: 55_000,
   })
 }

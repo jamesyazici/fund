@@ -285,7 +285,9 @@ def _live_pod_snapshot(pod: dict) -> dict:
         "gross_notional": 0.0,
         "net_notional": 0.0,
         "unrealized_pnl": 0.0,
+        "live_gain": 0.0,
         "daily_return": None,
+        "session_return": None,
         "total_return": None,
         "error": None,
     }
@@ -319,6 +321,9 @@ def _live_pod_snapshot(pod: dict) -> dict:
             "gross_notional": round(gross, 2),
             "net_notional": round(net, 2),
             "unrealized_pnl": round(pnl, 2),
+            "live_gain": round(nav - allocated, 2),
+            "daily_return": account.get("session_return"),
+            "session_return": account.get("session_return"),
             "total_return": ((nav / allocated) - 1) if allocated else None,
         })
     except Exception as e:
@@ -340,6 +345,16 @@ def public_live_pod_snapshot(pod_id: str):
     if not pod:
         raise HTTPException(404, "Pod not found.")
     return _live_pod_snapshot(pod)
+
+
+@app.get("/public/pods/{pod_id}/intraday-nav")
+def public_intraday_nav(pod_id: str, minutes: int = 390):
+    if not db.get_pod(pod_id):
+        raise HTTPException(404, "Pod not found.")
+    try:
+        return {"pod_id": pod_id, "timeframe": "1Min", "rows": alp.get_intraday_nav_history(pod_id, minutes)}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(getattr(e, "detail", e)))
 
 
 # ── Market data (any authenticated trader) ────────────────────────────────────
