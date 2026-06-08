@@ -2,11 +2,12 @@ import { Link } from 'react-router-dom'
 import { useNavHistory } from '@/hooks/useNavHistory'
 import { useMetrics } from '@/hooks/useMetrics'
 import { formatCompact, formatPct } from '@/lib/formatters'
-import { ASSET_CLASS_COLORS, ASSET_CLASS_LABELS } from '@/lib/metrics'
+import { ASSET_CLASS_LABELS } from '@/lib/metrics'
 import { cn } from '@/lib/cn'
 import type { Pod } from '@/types/db'
 import type { LivePodSnapshot } from '@/hooks/useLiveSnapshots'
 import { LineChart, Line, ResponsiveContainer, Tooltip } from 'recharts'
+import { ArrowUpRight, Radio } from 'lucide-react'
 
 interface PodCardProps {
   pod: Pod
@@ -33,8 +34,6 @@ function Sparkline({ podId }: { podId: string }) {
 export function PodCard({ pod, live }: PodCardProps) {
   const { data: history } = useNavHistory(pod.id, 1)
   const { data: metrics } = useMetrics(pod.id)
-  const accentColor = ASSET_CLASS_COLORS[pod.asset_class] ?? '#6366f1'
-
   const latest = history?.[history.length - 1]
   const nav = live?.nav ?? latest?.nav ?? pod.allocated_capital
   const totalReturn = live?.total_return ?? (pod.allocated_capital ? (Number(nav) / pod.allocated_capital) - 1 : null)
@@ -45,43 +44,48 @@ export function PodCard({ pod, live }: PodCardProps) {
   return (
     <Link
       to={`/pod/${pod.id}`}
-      className="group block overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-400 hover:shadow-lg dark:border-white/10 dark:bg-[#0d1014] dark:hover:border-white/25"
+      className="group block overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-400 hover:shadow-lg dark:border-white/10 dark:bg-[#0a0d0c] dark:hover:border-[#7cffb2]/35"
     >
+      <div className="border-b border-zinc-100 bg-zinc-50 px-4 py-2 dark:border-white/10 dark:bg-white/[0.03]">
+        <div className="flex items-center justify-between gap-3">
+          <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
+            {ASSET_CLASS_LABELS[pod.asset_class] ?? pod.asset_class}
+          </span>
+          <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-[0.12em]', live?.live ? 'border-emerald-500/30 text-emerald-600 dark:text-[#7cffb2]' : 'border-zinc-300 text-zinc-500 dark:border-zinc-700')}>
+            <Radio className="h-3 w-3" />
+            {live?.live ? 'live' : 'snapshot'}
+          </span>
+        </div>
+      </div>
       <div className="p-4">
         <div className="mb-4 flex items-start gap-3">
-          <div
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-sm font-black text-white"
-            style={{ backgroundColor: accentColor }}
-          >
-            {pod.name.slice(0, 2).toUpperCase()}
-          </div>
           <div className="min-w-0 flex-1">
             <h3 className="line-clamp-2 font-black leading-tight text-zinc-950 dark:text-white">
               {pod.name}
             </h3>
-            <span className="mt-1 inline-flex rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-semibold text-zinc-600 dark:bg-white/[0.06] dark:text-zinc-300">
-              {ASSET_CLASS_LABELS[pod.asset_class] ?? pod.asset_class}
-            </span>
+            <p className="mt-1 line-clamp-1 text-xs text-zinc-500">{pod.description || pod.benchmark_symbol}</p>
           </div>
-          <div className="shrink-0 text-right">
-            <p className="flex items-center justify-end gap-1 text-xs text-zinc-500">
-              <span className={cn('h-1.5 w-1.5 rounded-full', live?.live ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,.9)]' : 'bg-zinc-400')} />
-              NAV
-            </p>
-            <p className="text-base font-black text-zinc-950 dark:text-white tabular-nums">{formatCompact(nav)}</p>
-          </div>
+          <ArrowUpRight className="h-4 w-4 shrink-0 text-zinc-400 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5 dark:text-zinc-500" />
         </div>
 
         <Sparkline podId={pod.id} />
 
         <div className="mt-4 grid grid-cols-2 gap-2">
-          <div className={cn('rounded-lg px-3 py-2 text-center font-bold', positive ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' : 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300')}>
-            <p className="text-xs opacity-70">{positive ? 'Gain' : 'Drawdown'}</p>
-            <p className="text-lg tabular-nums">{returnLabel}</p>
+          <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 dark:border-white/10 dark:bg-white/[0.03]">
+            <p className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">NAV</p>
+            <p className="mt-1 text-lg font-black text-zinc-950 tabular-nums dark:text-white">{formatCompact(nav)}</p>
           </div>
-          <div className="rounded-lg bg-cyan-50 px-3 py-2 text-center font-bold text-cyan-700 dark:bg-cyan-500/10 dark:text-cyan-300">
-            <p className="text-xs opacity-70">Gross Notional</p>
-            <p className="text-lg tabular-nums">{formatCompact(live?.gross_notional ?? 0)}</p>
+          <div className={cn('rounded-lg border px-3 py-2', positive ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-[#7cffb2]/25 dark:bg-[#7cffb2]/10 dark:text-[#7cffb2]' : 'border-red-200 bg-red-50 text-red-700 dark:border-red-400/25 dark:bg-red-400/10 dark:text-red-300')}>
+            <p className="text-[11px] uppercase tracking-[0.14em] opacity-70">Return</p>
+            <p className="mt-1 text-lg font-black tabular-nums">{returnLabel}</p>
+          </div>
+          <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 dark:border-white/10 dark:bg-white/[0.03]">
+            <p className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Capital</p>
+            <p className="mt-1 text-lg font-black text-zinc-950 tabular-nums dark:text-white">{formatCompact(pod.allocated_capital)}</p>
+          </div>
+          <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 dark:border-white/10 dark:bg-white/[0.03]">
+            <p className="text-[11px] uppercase tracking-[0.14em] text-zinc-500">Exposure</p>
+            <p className="mt-1 text-lg font-black text-zinc-950 tabular-nums dark:text-white">{formatCompact(live?.gross_notional ?? 0)}</p>
           </div>
         </div>
 

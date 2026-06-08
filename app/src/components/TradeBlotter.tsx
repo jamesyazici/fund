@@ -13,24 +13,24 @@ function TradeRow({ trade }: { trade: Trade }) {
   const isBuy = trade.side === 'buy'
   const traderName = trade.traders?.display_name ?? 'Unknown'
   return (
-    <tr className="border-b border-zinc-100 transition-colors hover:bg-zinc-50 dark:border-white/5 dark:hover:bg-white/[0.04]">
-      <td className="py-3 px-3 text-xs text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
+    <tr className="border-b border-zinc-100 transition-colors hover:bg-zinc-50 dark:border-white/5 dark:hover:bg-[#101612]">
+      <td className="py-3 px-3 font-mono text-[11px] uppercase tracking-[0.08em] text-zinc-500 dark:text-zinc-500 whitespace-nowrap">
         {formatDateTime(trade.executed_at)}
-      </td>
-      <td className="py-3 px-3 font-mono font-black text-zinc-950 dark:text-white">
-        {trade.symbol}
       </td>
       <td className="py-3 px-3">
         <span
           className={cn(
-            'inline-flex min-w-14 justify-center rounded-full px-2.5 py-1 text-xs font-black uppercase tracking-wide',
+            'inline-flex min-w-14 justify-center rounded-md border px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.14em]',
             isBuy
-              ? 'bg-emerald-500/15 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-400'
-              : 'bg-red-500/15 text-red-700 dark:bg-red-500/20 dark:text-red-400',
+              ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-[#7cffb2]'
+              : 'border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300',
           )}
         >
           {trade.side}
         </span>
+      </td>
+      <td className="py-3 px-3 font-mono text-base font-black text-zinc-950 dark:text-white">
+        {trade.symbol}
       </td>
       <td className="py-3 px-3 text-right text-zinc-700 dark:text-zinc-200 tabular-nums">
         {Number(trade.quantity).toLocaleString()}
@@ -44,7 +44,7 @@ function TradeRow({ trade }: { trade: Trade }) {
       <td className="py-3 px-3 text-zinc-700 dark:text-zinc-200 whitespace-nowrap">
         {traderName}
       </td>
-      <td className="py-3 px-3 text-xs text-zinc-500 capitalize">
+      <td className="py-3 px-3 text-xs text-zinc-500 capitalize whitespace-nowrap">
         {trade.asset_class.replace('_', ' ')}
       </td>
     </tr>
@@ -74,18 +74,18 @@ export function TradeBlotter({ podId, limit = 50 }: TradeBlotterProps) {
   }
 
   return (
-    <div className="overflow-x-auto rounded-2xl border border-zinc-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#0d1014]">
+    <div className="overflow-x-auto rounded-lg border border-zinc-200 bg-white shadow-sm dark:border-white/10 dark:bg-[#0a0d0c]">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-zinc-200 bg-zinc-50 dark:border-white/10 dark:bg-white/[0.05]">
-            <th className="py-2.5 px-3 text-left text-xs font-bold uppercase tracking-wide text-zinc-500">Time</th>
-            <th className="py-2.5 px-3 text-left text-xs font-bold uppercase tracking-wide text-zinc-500">Symbol</th>
-            <th className="py-2.5 px-3 text-left text-xs font-bold uppercase tracking-wide text-zinc-500">Side</th>
-            <th className="py-2.5 px-3 text-right text-xs font-bold uppercase tracking-wide text-zinc-500">Qty</th>
-            <th className="py-2.5 px-3 text-right text-xs font-bold uppercase tracking-wide text-zinc-500">Price</th>
-            <th className="py-2.5 px-3 text-right text-xs font-bold uppercase tracking-wide text-zinc-500">Notional</th>
-            <th className="py-2.5 px-3 text-left text-xs font-bold uppercase tracking-wide text-zinc-500">Trader</th>
-            <th className="py-2.5 px-3 text-left text-xs font-bold uppercase tracking-wide text-zinc-500">Class</th>
+          <tr className="border-b border-zinc-200 bg-zinc-50 dark:border-white/10 dark:bg-[#0d1210]">
+            <th className="py-2.5 px-3 text-left text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">Recorded</th>
+            <th className="py-2.5 px-3 text-left text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">Side</th>
+            <th className="py-2.5 px-3 text-left text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">Ticker</th>
+            <th className="py-2.5 px-3 text-right text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">Qty</th>
+            <th className="py-2.5 px-3 text-right text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">Fill</th>
+            <th className="py-2.5 px-3 text-right text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">Notional</th>
+            <th className="py-2.5 px-3 text-left text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">Recorded by</th>
+            <th className="py-2.5 px-3 text-left text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-500">Book</th>
           </tr>
         </thead>
         <tbody>
