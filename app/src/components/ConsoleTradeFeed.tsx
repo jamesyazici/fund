@@ -80,8 +80,15 @@ export function ConsoleTradeFeed({ podId, limit = 26, positions = [] }: ConsoleT
                 <p>Quantity: {Number(position.quantity).toLocaleString()}</p>
                 <p>Avg entry: {formatCurrency(position.avg_entry_price)}</p>
                 <p>Current: {formatCurrency(position.current_price)}</p>
+                <p>Multiplier: {position.multiplier ?? 1}</p>
+                <p className={cn('font-black', (position.realized_pnl ?? 0) >= 0 ? 'text-emerald-700' : 'text-red-700')}>
+                  Realized P&L: {formatCurrency(position.realized_pnl)}
+                </p>
                 <p className={cn('font-black', (position.unrealized_pnl ?? 0) >= 0 ? 'text-emerald-700' : 'text-red-700')}>
                   Unrealized P&L: {formatCurrency(position.unrealized_pnl)}
+                </p>
+                <p className={cn('font-black', (position.total_pnl ?? 0) >= 0 ? 'text-emerald-700' : 'text-red-700')}>
+                  Total P&L: {formatCurrency(position.total_pnl)}
                 </p>
               </article>
             ))}

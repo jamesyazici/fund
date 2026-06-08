@@ -4,11 +4,18 @@ import { backendUrl } from '@/lib/backend'
 
 const LivePositionSchema = z.object({
   symbol: z.string(),
+  instrument_type: z.string().optional(),
+  underlying_symbol: z.string().nullable().optional(),
   quantity: z.number(),
   avg_entry_price: z.number(),
   current_price: z.number().nullable(),
+  multiplier: z.number().optional(),
   market_value: z.number().nullable(),
+  cost_basis: z.number().nullable().optional(),
+  realized_pnl: z.number().nullable().optional(),
   unrealized_pnl: z.number().nullable(),
+  total_pnl: z.number().nullable().optional(),
+  source: z.string().optional(),
 })
 
 const LiveAccountSchema = z.object({
@@ -49,7 +56,10 @@ export const LivePodSnapshotSchema = z.object({
   cash: z.number().nullable(),
   gross_notional: z.number(),
   net_notional: z.number(),
+  realized_pnl: z.number().optional(),
   unrealized_pnl: z.number(),
+  total_pnl: z.number().optional(),
+  fees: z.number().optional(),
   live_gain: z.number(),
   daily_return: z.number().nullable(),
   session_return: z.number().nullable(),

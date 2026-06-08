@@ -51,7 +51,7 @@ export function PodDetail() {
   const gross = live?.gross_notional ?? 0
   const nav = live?.nav ?? pod.allocated_capital
   const totalReturn = live?.total_return ?? null
-  const liveGain = live?.live_gain ?? nav - pod.allocated_capital
+  const liveGain = live?.total_pnl ?? live?.live_gain ?? nav - pod.allocated_capital
   const isPositive = liveGain >= 0
 
   return (
@@ -108,7 +108,7 @@ export function PodDetail() {
                 <div className="mt-1 font-black">{formatCurrency(gross)}</div>
               </div>
               <div className="border-l border-black p-4">
-                <div className="text-[10px] font-black uppercase text-zinc-500">Gain</div>
+                <div className="text-[10px] font-black uppercase text-zinc-500">Total P&L</div>
                 <div className={cn('mt-1 font-black', isPositive ? 'text-emerald-700' : 'text-red-700')}>
                   {formatCurrency(liveGain)}
                 </div>
@@ -130,26 +130,40 @@ export function PodDetail() {
               </div>
             </div>
             <div className="border-r border-black p-3">
-              <div className="font-black uppercase text-zinc-500">Cash</div>
-              <div className="mt-1 font-black">{formatCurrency(live?.cash)}</div>
+              <div className="font-black uppercase text-zinc-500">Realized P&L</div>
+              <div className={cn('mt-1 font-black', (live?.realized_pnl ?? 0) >= 0 ? 'text-emerald-700' : 'text-red-700')}>
+                {formatCurrency(live?.realized_pnl)}
+              </div>
             </div>
             <div className="border-r border-black p-3">
-              <div className="font-black uppercase text-zinc-500">Allocated</div>
-              <div className="mt-1 font-black">{formatCurrency(pod.allocated_capital)}</div>
+              <div className="font-black uppercase text-zinc-500">Unrealized P&L</div>
+              <div className={cn('mt-1 font-black', (live?.unrealized_pnl ?? 0) >= 0 ? 'text-emerald-700' : 'text-red-700')}>
+                {formatCurrency(live?.unrealized_pnl)}
+              </div>
             </div>
             <div className="p-3">
-              <div className="font-black uppercase text-zinc-500">Positions</div>
-              <div className="mt-1 font-black">{positions.length}</div>
+              <div className="font-black uppercase text-zinc-500">Cash / Positions</div>
+              <div className="mt-1 font-black">{formatCurrency(live?.cash)} / {positions.length}</div>
             </div>
           </div>
 
           <div className="grid grid-cols-5 border-t border-black bg-white font-mono text-[10px] max-lg:grid-cols-2">
-            {(positions.length ? positions.slice(0, 5) : [{ symbol: 'NO POSITIONS', market_value: 0, unrealized_pnl: 0 }]).map((position) => (
+            {(positions.length ? positions.slice(0, 5) : [{
+              symbol: 'NO POSITIONS',
+              quantity: 0,
+              avg_entry_price: 0,
+              current_price: 0,
+              multiplier: 1,
+              market_value: 0,
+              unrealized_pnl: 0,
+              total_pnl: 0,
+            }]).map((position) => (
               <div key={position.symbol} className="border-r border-black p-3 last:border-r-0">
                 <div className="font-black uppercase">{position.symbol}</div>
                 <div className="mt-1">{formatCurrency(position.market_value)}</div>
-                <div className={cn('mt-1 font-black', (position.unrealized_pnl ?? 0) >= 0 ? 'text-emerald-700' : 'text-red-700')}>
-                  {formatCurrency(position.unrealized_pnl)}
+                <div className="mt-1">x{position.multiplier ?? 1}</div>
+                <div className={cn('mt-1 font-black', (position.total_pnl ?? position.unrealized_pnl ?? 0) >= 0 ? 'text-emerald-700' : 'text-red-700')}>
+                  {formatCurrency(position.total_pnl ?? position.unrealized_pnl)}
                 </div>
               </div>
             ))}

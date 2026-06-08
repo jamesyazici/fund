@@ -15,6 +15,7 @@ export function Overview() {
   const totalNav = livePods?.reduce((sum, pod) => sum + pod.nav, 0) ?? pods?.reduce((sum, pod) => sum + pod.allocated_capital, 0) ?? 0
   const totalAllocated = pods?.reduce((sum, pod) => sum + pod.allocated_capital, 0) ?? 0
   const totalNotional = livePods?.reduce((sum, pod) => sum + pod.gross_notional, 0) ?? 0
+  const totalPnl = livePods?.reduce((sum, pod) => sum + (pod.total_pnl ?? pod.live_gain ?? 0), 0) ?? 0
   const totalReturn = totalAllocated ? totalNav / totalAllocated - 1 : null
 
   if (isLoading) {
@@ -91,8 +92,10 @@ export function Overview() {
               <div className="mt-1 font-black">{formatCurrency(totalNotional)}</div>
             </div>
             <div className="p-3">
-              <div className="font-black uppercase text-zinc-500">Allocated Capital</div>
-              <div className="mt-1 font-black">{formatCurrency(totalAllocated)}</div>
+              <div className="font-black uppercase text-zinc-500">Total P&L</div>
+              <div className={cn('mt-1 font-black', totalPnl >= 0 ? 'text-emerald-700' : 'text-red-700')}>
+                {formatCurrency(totalPnl)}
+              </div>
             </div>
           </div>
 
@@ -109,8 +112,8 @@ export function Overview() {
                 <Link key={pod.id} to={`/pod/${pod.id}`} className="border-r border-black p-3 last:border-r-0">
                   <div className="truncate font-black uppercase">{pod.name}</div>
                   <div className="mt-1">{formatCurrency(live?.nav ?? pod.allocated_capital)}</div>
-                  <div className={cn('mt-1 font-black', (live?.total_return ?? 0) >= 0 ? 'text-emerald-700' : 'text-red-700')}>
-                    {formatPct(live?.total_return)}
+                  <div className={cn('mt-1 font-black', (live?.total_pnl ?? live?.live_gain ?? 0) >= 0 ? 'text-emerald-700' : 'text-red-700')}>
+                    {formatCurrency(live?.total_pnl ?? live?.live_gain)}
                   </div>
                 </Link>
               )

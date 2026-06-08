@@ -8,6 +8,9 @@ storing secrets in the DB.
 This is the ONLY place Alpaca keys are used. They never leave the backend.
 """
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
+import json
 
 from fastapi import HTTPException
 
@@ -24,6 +27,7 @@ from alpaca.data.timeframe import TimeFrame
 
 from .config import get_settings
 from . import db
+from .accounting import parse_instrument
 
 
 # ── Credential resolution ────────────────────────────────────────────────────
@@ -58,6 +62,21 @@ def data_client(pod_id: str) -> StockHistoricalDataClient:
     return StockHistoricalDataClient(key, secret)
 
 
+def _alpaca_headers(pod_id: str) -> dict:
+    key, secret = _resolve_creds(pod_id)
+    return {
+        "APCA-API-KEY-ID": key,
+        "APCA-API-SECRET-KEY": secret,
+        "accept": "application/json",
+    }
+
+
+def _get_json(url: str, headers: dict) -> dict | list:
+    req = Request(url, headers=headers)
+    with urlopen(req, timeout=12) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
 # ── Orders ───────────────────────────────────────────────────────────────────
 
 def _tif(value: str) -> TimeInForce:
@@ -87,6 +106,8 @@ def submit_order(pod_id: str, *, symbol: str, side: str, qty: float = None,
 
 def to_trade_row(order, order_type_label: str, asset_class: str) -> dict:
     """Map an Alpaca order onto the `trades` table columns."""
+    instrument = parse_instrument(order.symbol, asset_class)
+    multiplier = float(instrument["multiplier"])
     qty          = float(order.qty) if order.qty else None
     filled_qty   = float(order.filled_qty) if order.filled_qty else None
     filled_price = float(order.filled_avg_price) if order.filled_avg_price else None
@@ -95,7 +116,7 @@ def to_trade_row(order, order_type_label: str, asset_class: str) -> dict:
     quantity = qty if qty is not None else filled_qty
     price    = filled_price if filled_price is not None else limit_price
     notional = float(order.notional) if order.notional else (
-        round(abs(quantity * price), 2) if (quantity is not None and price is not None) else None
+        round(abs(quantity * price * multiplier), 2) if (quantity is not None and price is not None) else None
     )
     submitted = getattr(order, "submitted_at", None) or getattr(order, "created_at", None)
     executed_at = submitted.isoformat() if submitted else datetime.now(timezone.utc).isoformat()
@@ -112,6 +133,13 @@ def to_trade_row(order, order_type_label: str, asset_class: str) -> dict:
         "filled_qty":      filled_qty,
         "status":          order.status.value if order.status else None,
         "asset_class":     asset_class,
+        "multiplier":      multiplier,
+        "instrument_type": instrument["instrument_type"],
+        "underlying_symbol": instrument["underlying_symbol"],
+        "option_expiration": instrument["option_expiration"],
+        "option_type": instrument["option_type"],
+        "option_strike": instrument["option_strike"],
+        "filled_at": filled_at.isoformat() if (filled_at := getattr(order, "filled_at", None)) else None,
         "executed_at":     executed_at,
     }
 
@@ -135,6 +163,38 @@ def get_account(pod_id: str) -> dict:
         "session_return": ((equity / last_equity) - 1) if last_equity else None,
         "status": str(acct.status),
     }
+
+
+def get_fill_activities(pod_id: str, days: int = 90) -> list[dict]:
+    """Fetch Alpaca FILL activities, including partial fills."""
+    settings = get_settings()
+    date = (datetime.now(timezone.utc) - timedelta(days=max(1, int(days or 90)))).strftime("%Y-%m-%d")
+    params = urlencode({"date": date, "direction": "asc", "page_size": 100})
+    url = f"{settings.alpaca_trading_base_url.rstrip('/')}/v2/account/activities/FILL?{params}"
+    try:
+        data = _get_json(url, _alpaca_headers(pod_id))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not fetch Alpaca fill activities: {e}")
+    if isinstance(data, dict):
+        data = data.get("activities") or data.get("data") or []
+    rows = []
+    for activity in data:
+        symbol = str(activity.get("symbol") or "").upper()
+        qty = activity.get("qty")
+        price = activity.get("price")
+        if not symbol or qty is None or price is None:
+            continue
+        rows.append({
+            "fill_id": activity.get("id"),
+            "alpaca_order_id": activity.get("order_id"),
+            "symbol": symbol,
+            "side": activity.get("side"),
+            "quantity": abs(float(qty)),
+            "price": float(price),
+            "filled_at": activity.get("transaction_time") or activity.get("date"),
+            "raw": activity,
+        })
+    return rows
 
 
 def get_positions(pod_id: str) -> list:
@@ -228,24 +288,45 @@ def get_notional_history_for_holdings(pod_id: str, holdings: dict[str, float], m
     if not holdings:
         return []
 
-    dc = data_client(pod_id)
     minutes = max(1, min(int(minutes or 390), 1440))
     start = datetime.now(timezone.utc) - timedelta(minutes=minutes)
-    req = StockBarsRequest(
-        symbol_or_symbols=list(holdings.keys()),
-        timeframe=TimeFrame.Minute,
-        start=start,
-    )
-    bars_by_symbol = dc.get_stock_bars(req).data
+    option_holdings = {
+        symbol: qty for symbol, qty in holdings.items()
+        if parse_instrument(symbol).get("instrument_type") == "option"
+    }
+    stock_holdings = {symbol: qty for symbol, qty in holdings.items() if symbol not in option_holdings}
+
     by_ts: dict[str, dict] = {}
-    for symbol, bars in bars_by_symbol.items():
-        qty = holdings.get(symbol, 0)
-        for bar in bars:
-            ts = bar.timestamp.replace(second=0, microsecond=0).isoformat()
+    if stock_holdings:
+        dc = data_client(pod_id)
+        req = StockBarsRequest(
+            symbol_or_symbols=list(stock_holdings.keys()),
+            timeframe=TimeFrame.Minute,
+            start=start,
+        )
+        bars_by_symbol = dc.get_stock_bars(req).data
+        _accumulate_notional_bars(by_ts, bars_by_symbol, stock_holdings, multiplier=1)
+
+    if option_holdings:
+        try:
+            option_bars = get_option_bars(pod_id, list(option_holdings.keys()), start)
+            for symbol, bars in option_bars.items():
+                qty = option_holdings.get(symbol, 0)
+                for bar in bars:
+                    ts = bar["timestamp"]
+                    row = by_ts.setdefault(ts, {"timestamp": ts, "gross_notional": 0.0, "net_notional": 0.0})
+                    value = qty * float(bar["close"]) * 100
+                    row["gross_notional"] += abs(value)
+                    row["net_notional"] += value
+        except Exception:
+            latest = get_latest_prices(pod_id, list(option_holdings.keys()))
+            ts = datetime.now(timezone.utc).replace(second=0, microsecond=0).isoformat()
             row = by_ts.setdefault(ts, {"timestamp": ts, "gross_notional": 0.0, "net_notional": 0.0})
-            value = qty * float(bar.close)
-            row["gross_notional"] += abs(value)
-            row["net_notional"] += value
+            for symbol, qty in option_holdings.items():
+                if symbol in latest:
+                    value = qty * latest[symbol] * 100
+                    row["gross_notional"] += abs(value)
+                    row["net_notional"] += value
 
     return [
         {
@@ -255,6 +336,54 @@ def get_notional_history_for_holdings(pod_id: str, holdings: dict[str, float], m
         }
         for row in sorted(by_ts.values(), key=lambda r: r["timestamp"])
     ]
+
+
+def _accumulate_notional_bars(by_ts: dict, bars_by_symbol: dict, holdings: dict[str, float], multiplier: float) -> None:
+    for symbol, bars in bars_by_symbol.items():
+        qty = holdings.get(symbol, 0)
+        for bar in bars:
+            ts = bar.timestamp.replace(second=0, microsecond=0).isoformat()
+            row = by_ts.setdefault(ts, {"timestamp": ts, "gross_notional": 0.0, "net_notional": 0.0})
+            value = qty * float(bar.close) * multiplier
+            row["gross_notional"] += abs(value)
+            row["net_notional"] += value
+
+
+def get_option_bars(pod_id: str, symbols: list[str], start: datetime) -> dict[str, list[dict]]:
+    if not symbols:
+        return {}
+    params = urlencode({
+        "symbols": ",".join(symbols),
+        "timeframe": "1Min",
+        "start": start.isoformat(),
+    })
+    url = f"https://data.alpaca.markets/v1beta1/options/bars?{params}"
+    data = _get_json(url, _alpaca_headers(pod_id))
+    bars = data.get("bars", data) if isinstance(data, dict) else {}
+    result = {}
+    for symbol, rows in (bars or {}).items():
+        result[symbol] = [{
+            "timestamp": (row.get("t") or row.get("timestamp")),
+            "close": float(row.get("c") if row.get("c") is not None else row.get("close")),
+        } for row in rows]
+    return result
+
+
+def get_option_latest_prices(pod_id: str, symbols: list[str]) -> dict[str, float]:
+    if not symbols:
+        return {}
+    params = urlencode({"symbols": ",".join(symbols)})
+    url = f"https://data.alpaca.markets/v1beta1/options/trades/latest?{params}"
+    data = _get_json(url, _alpaca_headers(pod_id))
+    trades = data.get("trades", data) if isinstance(data, dict) else {}
+    prices = {}
+    for symbol, trade in (trades or {}).items():
+        price = trade.get("p") if isinstance(trade, dict) else None
+        if price is None and isinstance(trade, dict):
+            price = trade.get("price")
+        if price is not None:
+            prices[symbol] = float(price)
+    return prices
 
 
 # ── Market data ──────────────────────────────────────────────────────────────
@@ -269,14 +398,24 @@ def get_price(pod_id: str, symbol: str) -> float:
 def get_latest_prices(pod_id: str, symbols: list[str]) -> dict[str, float]:
     if not symbols:
         return {}
-    dc = data_client(pod_id)
     upper = [s.upper() for s in symbols]
+    option_symbols = [s for s in upper if parse_instrument(s).get("instrument_type") == "option"]
+    stock_symbols = [s for s in upper if s not in option_symbols]
+    prices = {}
+    if option_symbols:
+        try:
+            prices.update(get_option_latest_prices(pod_id, option_symbols))
+        except Exception:
+            pass
+    if not stock_symbols:
+        return prices
+    dc = data_client(pod_id)
     try:
-        trades = dc.get_stock_latest_trade(StockLatestTradeRequest(symbol_or_symbols=upper))
-        return {symbol: float(trades[symbol].price) for symbol in upper if symbol in trades}
+        trades = dc.get_stock_latest_trade(StockLatestTradeRequest(symbol_or_symbols=stock_symbols))
+        prices.update({symbol: float(trades[symbol].price) for symbol in stock_symbols if symbol in trades})
+        return prices
     except Exception:
-        prices = {}
-        for symbol in upper:
+        for symbol in stock_symbols:
             try:
                 prices[symbol] = get_price(pod_id, symbol)
             except Exception:

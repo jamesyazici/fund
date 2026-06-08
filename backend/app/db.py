@@ -81,14 +81,98 @@ def list_trade_activity(trader_id: str = None, pod_id: str = None, limit: int = 
 
 def list_pod_trades_for_marking(pod_id: str) -> list[dict]:
     """Trades ordered oldest-first for deriving public mark-to-market positions."""
-    res = (
-        sb().table("trades")
-        .select("id, symbol, side, quantity, price, notional, filled_qty, asset_class, status, executed_at")
-        .eq("pod_id", pod_id)
-        .order("executed_at", desc=False)
-        .execute()
-    )
+    try:
+        res = (
+            sb().table("trades")
+            .select("id, pod_id, trader_id, alpaca_order_id, symbol, side, quantity, price, notional, filled_qty, limit_price, asset_class, status, executed_at, created_at, multiplier, instrument_type, fees, realized_pnl, filled_at")
+            .eq("pod_id", pod_id)
+            .order("executed_at", desc=False)
+            .execute()
+        )
+    except Exception:
+        res = (
+            sb().table("trades")
+            .select("id, pod_id, trader_id, alpaca_order_id, symbol, side, quantity, price, notional, filled_qty, limit_price, asset_class, status, executed_at, created_at")
+            .eq("pod_id", pod_id)
+            .order("executed_at", desc=False)
+            .execute()
+        )
     return res.data or []
+
+
+def list_order_fills(pod_id: str) -> list[dict]:
+    try:
+        res = (
+            sb().table("order_fills")
+            .select("*")
+            .eq("pod_id", pod_id)
+            .order("filled_at", desc=False)
+            .execute()
+        )
+        return res.data or []
+    except Exception:
+        return []
+
+
+def upsert_order_fills(pod_id: str, fills: list[dict]) -> None:
+    if not fills:
+        return
+    payload = []
+    for fill in fills:
+        payload.append({
+            "pod_id": pod_id,
+            "trader_id": fill.get("trader_id"),
+            "trade_id": fill.get("trade_id"),
+            "alpaca_order_id": str(fill.get("alpaca_order_id") or fill.get("fill_id")),
+            "fill_id": str(fill.get("fill_id") or fill.get("alpaca_order_id")),
+            "symbol": fill["symbol"],
+            "side": fill["side"],
+            "instrument_type": fill.get("instrument_type") or "equity",
+            "underlying_symbol": fill.get("underlying_symbol"),
+            "quantity": fill["quantity"],
+            "price": fill["price"],
+            "multiplier": fill.get("multiplier") or 1,
+            "notional": fill["notional"],
+            "fees": fill.get("fees") or 0,
+            "realized_pnl": fill.get("realized_pnl"),
+            "filled_at": fill["filled_at"],
+            "raw": fill.get("raw"),
+        })
+    try:
+        sb().table("order_fills").upsert(
+            payload, on_conflict="pod_id,alpaca_order_id,fill_id"
+        ).execute()
+    except Exception:
+        return
+
+
+def replace_position_marks(pod_id: str, rows: list[dict]) -> None:
+    try:
+        if rows:
+            now = _now()
+            allowed = {
+                "symbol", "instrument_type", "underlying_symbol", "quantity",
+                "avg_entry_price", "current_price", "multiplier", "market_value",
+                "cost_basis", "realized_pnl", "unrealized_pnl", "total_pnl",
+            }
+            sb().table("position_marks").upsert(
+                [{"pod_id": pod_id, "updated_at": now, **{k: v for k, v in r.items() if k in allowed}} for r in rows],
+                on_conflict="pod_id,symbol",
+            ).execute()
+        held = [r["symbol"] for r in rows]
+        q = sb().table("position_marks").delete().eq("pod_id", pod_id)
+        if held:
+            q = q.not_.in_("symbol", held)
+        q.execute()
+    except Exception:
+        return
+
+
+def insert_portfolio_mark(pod_id: str, row: dict) -> None:
+    try:
+        sb().table("portfolio_marks").insert({"pod_id": pod_id, **row}).execute()
+    except Exception:
+        return
 
 
 def create_auth_user(email: str, password: str) -> str:
@@ -280,11 +364,19 @@ def log_capital_allocation(pod_id, new_capital, previous_capital, allocated_by, 
 # ── Trades, positions, NAV, metrics ──────────────────────────────────────────
 
 def log_trade(pod_id, trader_id, trade: dict) -> None:
-    sb().table("trades").insert({
-        "pod_id": pod_id,
-        "trader_id": trader_id,
-        **trade,
-    }).execute()
+    payload = {"pod_id": pod_id, "trader_id": trader_id, **trade}
+    try:
+        sb().table("trades").insert(payload).execute()
+    except Exception:
+        legacy = {
+            key: payload.get(key)
+            for key in (
+                "pod_id", "trader_id", "alpaca_order_id", "symbol", "side",
+                "order_type", "quantity", "price", "notional", "limit_price",
+                "filled_qty", "status", "asset_class", "executed_at",
+            )
+        }
+        sb().table("trades").insert(legacy).execute()
 
 
 def replace_positions(pod_id, rows: list) -> None:
