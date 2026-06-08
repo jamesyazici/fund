@@ -36,55 +36,57 @@ export function PodCard({ pod }: PodCardProps) {
   const latest = history?.[history.length - 1]
   const nav = latest?.nav ?? pod.allocated_capital
   const dayReturn = latest?.daily_return ?? null
+  const positive = (dayReturn ?? 0) >= 0
+  const returnLabel = dayReturn != null ? formatPct(Math.abs(dayReturn)) : '0.0%'
 
   return (
     <Link
       to={`/pod/${pod.id}`}
-      className="group block overflow-hidden rounded-2xl border border-zinc-200/80 bg-white/85 shadow-sm backdrop-blur transition-all duration-200 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-xl dark:border-white/10 dark:bg-white/[0.04] dark:hover:border-white/20"
+      className="group block overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-lg dark:border-white/10 dark:bg-[#0d1014] dark:hover:border-white/20"
     >
-      <div className="h-1 w-full opacity-90" style={{ backgroundColor: accentColor }} />
-      <div className="p-5">
-        <div className="flex items-start justify-between gap-2 mb-3">
-          <div>
-            <h3 className="font-semibold text-zinc-900 dark:text-white text-base leading-tight">
+      <div className="p-4">
+        <div className="mb-4 flex items-start gap-3">
+          <div
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-sm font-black text-white"
+            style={{ backgroundColor: accentColor }}
+          >
+            {pod.name.slice(0, 2).toUpperCase()}
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="line-clamp-2 font-black leading-tight text-zinc-950 dark:text-white">
               {pod.name}
             </h3>
-            <span
-              className="inline-block mt-1 text-xs px-2 py-0.5 rounded-full"
-              style={{ background: `${accentColor}25`, color: accentColor }}
-            >
+            <span className="mt-1 inline-flex rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-semibold text-zinc-600 dark:bg-white/[0.06] dark:text-zinc-300">
               {ASSET_CLASS_LABELS[pod.asset_class] ?? pod.asset_class}
             </span>
           </div>
-          <div className="text-right shrink-0">
-            <p className="text-lg font-bold text-zinc-900 dark:text-white tabular-nums">
-              {formatCompact(nav)}
-            </p>
-            {dayReturn != null && (
-              <p
-                className={cn(
-                  'text-xs font-medium',
-                  dayReturn >= 0
-                    ? 'text-emerald-600 dark:text-emerald-400'
-                    : 'text-red-600 dark:text-red-400',
-                )}
-              >
-                {formatPct(dayReturn)} today
-              </p>
-            )}
+          <div className="shrink-0 text-right">
+            <p className="text-xs text-zinc-500">NAV</p>
+            <p className="text-base font-black text-zinc-950 dark:text-white tabular-nums">{formatCompact(nav)}</p>
           </div>
         </div>
 
         <Sparkline podId={pod.id} />
 
-        <div className="mt-4 grid grid-cols-3 gap-2 border-t border-zinc-100 pt-3 text-center dark:border-white/10">
-          <div className="rounded-xl bg-zinc-50 p-2 dark:bg-zinc-950/50">
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className={cn('rounded-xl px-3 py-2 text-center font-bold', positive ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' : 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300')}>
+            <p className="text-xs opacity-70">{positive ? 'Up' : 'Down'}</p>
+            <p className="text-lg tabular-nums">{returnLabel}</p>
+          </div>
+          <div className="rounded-xl bg-blue-50 px-3 py-2 text-center font-bold text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
+            <p className="text-xs opacity-70">Capital</p>
+            <p className="text-lg tabular-nums">{formatCompact(pod.allocated_capital)}</p>
+          </div>
+        </div>
+
+        <div className="mt-3 grid grid-cols-3 gap-2 border-t border-zinc-100 pt-3 text-center dark:border-white/10">
+          <div>
             <p className="text-[10px] text-zinc-500 uppercase tracking-wide">Sharpe</p>
-            <p className="text-sm font-medium text-zinc-900 dark:text-white">
+            <p className="text-sm font-semibold text-zinc-900 dark:text-white">
               {metrics?.sharpe != null ? metrics.sharpe.toFixed(2) : '—'}
             </p>
           </div>
-          <div className="rounded-xl bg-zinc-50 p-2 dark:bg-zinc-950/50">
+          <div>
             <p className="text-[10px] text-zinc-500 uppercase tracking-wide">Ann. Ret.</p>
             <p
               className={cn(
@@ -97,9 +99,9 @@ export function PodCard({ pod }: PodCardProps) {
               {metrics?.annualized_return != null ? formatPct(metrics.annualized_return) : '—'}
             </p>
           </div>
-          <div className="rounded-xl bg-zinc-50 p-2 dark:bg-zinc-950/50">
+          <div>
             <p className="text-[10px] text-zinc-500 uppercase tracking-wide">β</p>
-            <p className="text-sm font-medium text-zinc-900 dark:text-white">
+            <p className="text-sm font-semibold text-zinc-900 dark:text-white">
               {metrics?.beta != null ? metrics.beta.toFixed(2) : '—'}
             </p>
           </div>

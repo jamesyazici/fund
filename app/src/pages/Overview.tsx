@@ -12,24 +12,27 @@ function TotalAUM({ pods }: { pods: { id: string; allocated_capital: number }[] 
   const totalStarting = navData.reduce((acc, p) => acc + p.capital, 0)
 
   return (
-    <div className="rounded-3xl border border-zinc-200/80 bg-white/80 p-6 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/[0.04] sm:p-8">
-      <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+    <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#0d1014] sm:p-5">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-3">
-            Live fund dashboard
+          <p className="text-xs font-bold uppercase tracking-widest text-blue-600">
+            Featured fund market
           </p>
-          <h1 className="max-w-2xl text-4xl font-black tracking-tight text-zinc-950 dark:text-white sm:text-6xl">
-            Pod performance, positions, and trades in one view.
+          <h1 className="mt-2 max-w-3xl text-2xl font-black tracking-tight text-zinc-950 dark:text-white sm:text-4xl">
+            Which RQFC pod is leading the desk right now?
           </h1>
+          <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+            Live NAV, capital, and execution activity across all trading pods.
+          </p>
         </div>
-        <div className="grid min-w-64 grid-cols-2 gap-3">
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 dark:border-white/10 dark:bg-zinc-950/50">
+        <div className="grid min-w-72 grid-cols-2 gap-2">
+          <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-white/10 dark:bg-white/[0.04]">
             <p className="text-xs text-zinc-500 uppercase tracking-wide">Total AUM</p>
             <p className="mt-1 text-3xl font-extrabold text-zinc-950 dark:text-white tabular-nums">
               {formatCompact(totalStarting)}
             </p>
           </div>
-          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 dark:border-white/10 dark:bg-zinc-950/50">
+          <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-4 dark:border-white/10 dark:bg-white/[0.04]">
             <p className="text-xs text-zinc-500 uppercase tracking-wide">Pods</p>
             <p className="mt-1 text-3xl font-extrabold text-zinc-950 dark:text-white tabular-nums">
               {pods.length}
@@ -73,11 +76,11 @@ export function Overview() {
       <section>
         <div className="mb-4 flex items-end justify-between">
           <div>
-            <h2 className="text-lg font-bold text-zinc-950 dark:text-white">Strategy Pods</h2>
-            <p className="text-sm text-zinc-500">Capital, risk metrics, and latest NAV movement.</p>
+            <h2 className="text-xl font-black text-zinc-950 dark:text-white">Featured pods</h2>
+            <p className="text-sm text-zinc-500">Market-style cards for each strategy desk.</p>
           </div>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {pods.map((pod) => (
             <PodCard key={pod.id} pod={pod} />
           ))}
@@ -86,8 +89,8 @@ export function Overview() {
 
       <section>
         <div className="mb-4">
-          <h2 className="text-lg font-bold text-zinc-950 dark:text-white">Recent Trades</h2>
-          <p className="text-sm text-zinc-500">Fund-wide execution feed with trader attribution.</p>
+          <h2 className="text-xl font-black text-zinc-950 dark:text-white">Live activity</h2>
+          <p className="text-sm text-zinc-500">Execution feed with trader attribution.</p>
         </div>
         <TradeBlotter limit={20} />
       </section>

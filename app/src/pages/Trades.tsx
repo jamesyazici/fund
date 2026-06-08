@@ -10,14 +10,14 @@ export function Trades() {
 
   return (
     <div className="space-y-6">
-      <div className="rounded-3xl border border-zinc-200/80 bg-white/80 p-6 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/[0.04]">
+      <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[#0d1014]">
         <div className="flex flex-wrap gap-4 items-end justify-between">
           <div>
-            <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest">
-              Execution audit
+            <p className="text-xs font-black text-blue-600 uppercase tracking-widest">
+              Activity tape
             </p>
-            <h1 className="mt-2 text-3xl font-black tracking-tight text-zinc-950 dark:text-white">
-              All Trades
+            <h1 className="mt-2 text-3xl font-black tracking-tight text-zinc-950 dark:text-white sm:text-4xl">
+              Who traded what?
             </h1>
             <p className="mt-1 text-sm text-zinc-500">
               Filter by pod and review every trade with trader attribution.
@@ -26,7 +26,7 @@ export function Trades() {
           <select
             value={selectedPod}
             onChange={(e) => setSelectedPod(e.target.value)}
-            className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm text-zinc-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-white/10 dark:bg-zinc-950/60 dark:text-zinc-200"
+            className="rounded-full border border-zinc-200 bg-zinc-50 px-4 py-2 text-sm font-semibold text-zinc-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-200"
           >
             <option value="">All Pods</option>
             {pods?.map((p) => (
