@@ -69,75 +69,91 @@ def root_page():
 <title>RQFC Fund API</title>
 <style>
   :root, [data-theme="dark"] {
-    --bg:#080a0f; --panel:#111723; --line:#263246; --text:#f1f5f9;
-    --muted:#94a3b8; --accent:#22c55e; --accent2:#60a5fa; --button:#f8fafc; --buttonText:#071014;
+    --bg:#070a12; --panel:#101827; --panelSoft:rgba(16,24,39,.74); --line:#273449; --text:#f8fafc;
+    --muted:#9aa8bc; --accent:#22c55e; --accent2:#38bdf8; --button:#f8fafc; --buttonText:#071014;
+    --heroA:rgba(34,197,94,.20); --heroB:rgba(56,189,248,.18); --grid:#1e293b; --tile:#0f172a;
     color-scheme:dark;
   }
   [data-theme="light"] {
-    --bg:#f8fafc; --panel:#ffffff; --line:#d9e2ee; --text:#0f172a;
+    --bg:#f6f8fb; --panel:#ffffff; --panelSoft:rgba(255,255,255,.82); --line:#d7e0ec; --text:#0f172a;
     --muted:#526276; --accent:#047857; --accent2:#2563eb; --button:#0f172a; --buttonText:#ffffff;
+    --heroA:rgba(4,120,87,.14); --heroB:rgba(37,99,235,.13); --grid:#e7eef8; --tile:#ffffff;
     color-scheme:light;
   }
   @media (prefers-color-scheme: light) {
     [data-theme="system"] {
-      --bg:#f8fafc; --panel:#ffffff; --line:#d9e2ee; --text:#0f172a;
+      --bg:#f6f8fb; --panel:#ffffff; --panelSoft:rgba(255,255,255,.82); --line:#d7e0ec; --text:#0f172a;
       --muted:#526276; --accent:#047857; --accent2:#2563eb; --button:#0f172a; --buttonText:#ffffff;
+      --heroA:rgba(4,120,87,.14); --heroB:rgba(37,99,235,.13); --grid:#e7eef8; --tile:#ffffff;
       color-scheme:light;
     }
   }
   * { box-sizing:border-box; }
   body {
     margin:0; min-height:100vh; color:var(--text); background:
-      radial-gradient(circle at 18% 12%, #17324a 0, transparent 26rem),
-      radial-gradient(circle at 86% 18%, #183829 0, transparent 22rem),
-      var(--bg);
+      radial-gradient(circle at 18% 14%, var(--heroB) 0, transparent 25rem),
+      radial-gradient(circle at 86% 12%, var(--heroA) 0, transparent 22rem),
+      linear-gradient(135deg, var(--bg), color-mix(in srgb, var(--bg) 86%, var(--panel)));
     font:16px/1.5 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   }
-  main { min-height:100vh; display:grid; place-items:center; padding:2rem; }
-  .hero { width:min(980px, 100%); display:grid; grid-template-columns:1.1fr .9fr; gap:3rem; align-items:center; }
-  .eyebrow { color:var(--accent); font-size:.78rem; letter-spacing:.16em; text-transform:uppercase; font-weight:700; }
-  h1 { font-size:clamp(2.7rem, 7vw, 5.7rem); line-height:.92; margin:.6rem 0 1.2rem; letter-spacing:0; }
+  body::before {
+    content:""; position:fixed; inset:0; pointer-events:none; opacity:.34;
+    background-image:linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size:44px 44px; mask-image:linear-gradient(to bottom, #000, transparent 72%);
+  }
+  main { min-height:100vh; display:grid; place-items:center; padding:5rem 1.25rem 2rem; }
+  .hero { width:min(1080px, 100%); display:grid; grid-template-columns:minmax(0,1.05fr) minmax(320px,.95fr); gap:3rem; align-items:center; position:relative; }
+  .eyebrow { display:inline-flex; align-items:center; gap:.45rem; color:var(--accent); font-size:.78rem; letter-spacing:.14em; text-transform:uppercase; font-weight:800; }
+  .eyebrow::before { content:""; width:.5rem; height:.5rem; border-radius:999px; background:var(--accent); box-shadow:0 0 22px var(--accent); }
+  h1 { font-size:clamp(3rem, 8vw, 6.4rem); line-height:.9; margin:.75rem 0 1.2rem; letter-spacing:0; max-width:10ch; }
   p { max-width:36rem; color:var(--muted); margin:0 0 1.5rem; font-size:1.05rem; }
+  .ctaRow { display:flex; gap:.75rem; flex-wrap:wrap; align-items:center; }
   a {
     display:inline-flex; align-items:center; justify-content:center; min-height:2.8rem;
     padding:0 1rem; border-radius:8px; background:var(--button); color:var(--buttonText);
     text-decoration:none; font-weight:750;
   }
+  .ghost { background:transparent; color:var(--text); border:1px solid var(--line); }
   .theme {
     position:fixed; top:1rem; right:1rem; display:flex; gap:.25rem; padding:.25rem;
-    border:1px solid var(--line); border-radius:10px; background:color-mix(in srgb, var(--panel) 82%, transparent);
+    border:1px solid var(--line); border-radius:999px; background:var(--panelSoft); backdrop-filter:blur(14px);
   }
   .theme button {
-    min-height:2rem; border:0; border-radius:7px; padding:0 .7rem; background:transparent;
-    color:var(--muted); font:inherit; font-size:.82rem; cursor:pointer;
+    width:2.05rem; height:2.05rem; display:grid; place-items:center; border:0; border-radius:999px; padding:0; background:transparent;
+    color:var(--muted); cursor:pointer;
   }
+  .theme svg { width:1rem; height:1rem; }
   .theme button.active { background:var(--button); color:var(--buttonText); font-weight:750; }
   .visual {
-    border:1px solid var(--line); background:rgba(17,23,35,.72); border-radius:16px;
-    padding:1rem; box-shadow:0 24px 80px rgba(0,0,0,.34); overflow:hidden;
+    border:1px solid var(--line); background:var(--panelSoft); border-radius:18px;
+    padding:1rem; box-shadow:0 24px 80px rgba(0,0,0,.24); overflow:hidden; backdrop-filter:blur(18px);
   }
   .bar { display:flex; gap:.4rem; margin-bottom:1rem; }
   .dot { width:.7rem; height:.7rem; border-radius:999px; background:#334155; }
   .dot:nth-child(1) { background:#ef4444; } .dot:nth-child(2) { background:#f59e0b; } .dot:nth-child(3) { background:#22c55e; }
-  .grid { display:grid; grid-template-columns:repeat(7, 1fr); gap:.45rem; }
-  .cell { aspect-ratio:1; border-radius:6px; background:#1e293b; }
-  .cell:nth-child(3n) { background:#164e63; } .cell:nth-child(4n) { background:#14532d; }
-  .cell:nth-child(9n) { background:#1d4ed8; } .cell:nth-child(11n) { background:#64748b; }
+  .terminal { border:1px solid var(--line); border-radius:12px; overflow:hidden; background:var(--tile); }
+  .line { display:grid; grid-template-columns:5rem 1fr auto; gap:.6rem; padding:.7rem .8rem; border-top:1px solid var(--line); align-items:center; }
+  .line:first-child { border-top:0; }
+  .sym { font-weight:800; }
+  .spark { height:.45rem; border-radius:999px; background:linear-gradient(90deg, var(--accent), var(--accent2)); }
+  .gain { color:var(--accent); font-weight:800; font-variant-numeric:tabular-nums; }
   .metric { margin-top:1rem; display:grid; grid-template-columns:1fr 1fr; gap:.6rem; }
-  .tile { border:1px solid var(--line); border-radius:10px; padding:.85rem; background:#0f172a; }
+  .tile { border:1px solid var(--line); border-radius:10px; padding:.85rem; background:var(--tile); }
   .label { color:var(--muted); font-size:.75rem; }
   .value { font-size:1.35rem; font-weight:800; margin-top:.2rem; }
   @media (max-width:760px) {
+    main { padding-top:4.5rem; }
     .hero { grid-template-columns:1fr; gap:2rem; }
     .visual { order:-1; }
+    h1 { max-width:11ch; }
   }
 </style>
 </head>
 <body>
 <div class="theme" aria-label="Theme">
-  <button data-theme-choice="system" onclick="setTheme('system')">System</button>
-  <button data-theme-choice="light" onclick="setTheme('light')">Light</button>
-  <button data-theme-choice="dark" onclick="setTheme('dark')">Dark</button>
+  <button data-theme-choice="system" onclick="setTheme('system')" title="System theme" aria-label="System theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button>
+  <button data-theme-choice="light" onclick="setTheme('light')" title="Light theme" aria-label="Light theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg></button>
+  <button data-theme-choice="dark" onclick="setTheme('dark')" title="Dark theme" aria-label="Dark theme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.99 13.2A8.5 8.5 0 1 1 10.8 3.01 6.5 6.5 0 0 0 20.99 13.2Z"/></svg></button>
 </div>
 <main>
   <section class="hero" aria-label="RQFC Fund API">
@@ -148,15 +164,18 @@ def root_page():
         This service powers authenticated pod trading, portfolio sync, and the
         private admin control plane. API documentation is not exposed publicly.
       </p>
-      <a href="/portal">Open Admin Portal</a>
+      <div class="ctaRow">
+        <a href="/portal">Open Admin Portal</a>
+        <a class="ghost" href="/portal">Manage pods</a>
+      </div>
     </div>
     <div class="visual" aria-hidden="true">
       <div class="bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
-      <div class="grid">
-        <span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span>
-        <span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span>
-        <span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span>
-        <span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span><span class="cell"></span>
+      <div class="terminal">
+        <div class="line"><span class="sym">AAPL</span><span class="spark" style="width:88%"></span><span class="gain">+1.8%</span></div>
+        <div class="line"><span class="sym">NVDA</span><span class="spark" style="width:96%"></span><span class="gain">+3.4%</span></div>
+        <div class="line"><span class="sym">SPY</span><span class="spark" style="width:72%"></span><span class="gain">+0.7%</span></div>
+        <div class="line"><span class="sym">BTC</span><span class="spark" style="width:81%"></span><span class="gain">+2.1%</span></div>
       </div>
       <div class="metric">
         <div class="tile"><div class="label">Auth</div><div class="value">Locked</div></div>
