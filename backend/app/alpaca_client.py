@@ -95,7 +95,7 @@ def to_trade_row(order, order_type_label: str, asset_class: str) -> dict:
     quantity = qty if qty is not None else filled_qty
     price    = filled_price if filled_price is not None else limit_price
     notional = float(order.notional) if order.notional else (
-        round(quantity * price, 2) if (quantity and price) else None
+        round(abs(quantity * price), 2) if (quantity is not None and price is not None) else None
     )
     submitted = getattr(order, "submitted_at", None) or getattr(order, "created_at", None)
     executed_at = submitted.isoformat() if submitted else datetime.now(timezone.utc).isoformat()

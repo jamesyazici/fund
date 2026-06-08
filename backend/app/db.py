@@ -67,7 +67,16 @@ def list_trade_activity(trader_id: str = None, pod_id: str = None, limit: int = 
         q = q.eq("trader_id", trader_id)
     if pod_id:
         q = q.eq("pod_id", pod_id)
-    return q.execute().data or []
+    rows = q.execute().data or []
+    for row in rows:
+        notional = row.get("notional")
+        quantity = row.get("quantity")
+        price = row.get("price")
+        if notional is None and quantity is not None and price is not None:
+            row["computed_notional"] = round(abs(float(quantity) * float(price)), 2)
+        else:
+            row["computed_notional"] = notional
+    return rows
 
 
 def create_auth_user(email: str, password: str) -> str:

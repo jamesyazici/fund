@@ -264,6 +264,84 @@ def pod_positions(pod_id: str, trader: dict = Depends(get_current_trader)):
     return alp.get_positions(pod_id)
 
 
+# ── Public transparency data ─────────────────────────────────────────────────
+
+def _live_pod_snapshot(pod: dict) -> dict:
+    """Read-only public pod snapshot with live Alpaca marks when available."""
+    snapshot = {
+        "id": pod["id"],
+        "name": pod["name"],
+        "asset_class": pod["asset_class"],
+        "description": pod.get("description"),
+        "benchmark_symbol": pod.get("benchmark_symbol"),
+        "inception_date": pod.get("inception_date"),
+        "allocated_capital": float(pod.get("allocated_capital") or 0),
+        "live": False,
+        "source": "supabase",
+        "account": None,
+        "positions": [],
+        "nav": float(pod.get("allocated_capital") or 0),
+        "cash": None,
+        "gross_notional": 0.0,
+        "net_notional": 0.0,
+        "unrealized_pnl": 0.0,
+        "daily_return": None,
+        "total_return": None,
+        "error": None,
+    }
+    try:
+        account = alp.get_account(pod["id"])
+        positions = alp.get_positions(pod["id"])
+        gross = 0.0
+        net = 0.0
+        pnl = 0.0
+        for position in positions:
+            quantity = float(position.get("quantity") or 0)
+            price = position.get("current_price")
+            market_value = position.get("market_value")
+            if market_value is None and price is not None:
+                market_value = quantity * float(price)
+                position["market_value"] = round(market_value, 2)
+            value = float(market_value or 0)
+            gross += abs(value)
+            net += value
+            pnl += float(position.get("unrealized_pnl") or 0)
+
+        nav = float(account.get("portfolio_value") or account.get("equity") or snapshot["nav"])
+        allocated = snapshot["allocated_capital"]
+        snapshot.update({
+            "live": True,
+            "source": "alpaca",
+            "account": account,
+            "positions": positions,
+            "nav": nav,
+            "cash": float(account.get("cash") or 0),
+            "gross_notional": round(gross, 2),
+            "net_notional": round(net, 2),
+            "unrealized_pnl": round(pnl, 2),
+            "total_return": ((nav / allocated) - 1) if allocated else None,
+        })
+    except Exception as e:
+        snapshot["error"] = str(getattr(e, "detail", e))
+    return snapshot
+
+
+@app.get("/public/live")
+def public_live_snapshots():
+    """Public transparency feed. Never returns credentials or trader identities."""
+    pods = db.sb().table("pods").select("*").order("created_at").execute().data or []
+    snapshots = [_live_pod_snapshot(p) for p in pods]
+    return {"pods": snapshots}
+
+
+@app.get("/public/pods/{pod_id}/live")
+def public_live_pod_snapshot(pod_id: str):
+    pod = db.get_pod(pod_id)
+    if not pod:
+        raise HTTPException(404, "Pod not found.")
+    return _live_pod_snapshot(pod)
+
+
 # ── Market data (any authenticated trader) ────────────────────────────────────
 
 @app.get("/market/price")

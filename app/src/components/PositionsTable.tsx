@@ -2,16 +2,26 @@ import { usePositions } from '@/hooks/usePositions'
 import { useRealtimePositions } from '@/hooks/useRealtimeTrades'
 import { formatCurrency, formatPct } from '@/lib/formatters'
 import { cn } from '@/lib/cn'
+import type { LivePosition } from '@/hooks/useLiveSnapshots'
 
 interface PositionsTableProps {
   podId: string
+  livePositions?: LivePosition[]
 }
 
-export function PositionsTable({ podId }: PositionsTableProps) {
+export function PositionsTable({ podId, livePositions }: PositionsTableProps) {
   const { data: positions, isLoading, error } = usePositions(podId)
   useRealtimePositions(podId)
+  const rows = livePositions?.length
+    ? livePositions.map((position) => ({
+        id: `${podId}-${position.symbol}`,
+        pod_id: podId,
+        updated_at: new Date().toISOString(),
+        ...position,
+      }))
+    : positions
 
-  if (isLoading) {
+  if (isLoading && !livePositions?.length) {
     return (
       <div className="space-y-2 animate-pulse">
         {Array.from({ length: 4 }).map((_, i) => (
@@ -21,7 +31,7 @@ export function PositionsTable({ podId }: PositionsTableProps) {
     )
   }
 
-  if (error || !positions?.length) {
+  if ((error && !livePositions?.length) || !rows?.length) {
     return (
       <p className="text-sm text-zinc-500 py-4">
         {error ? 'Failed to load positions.' : 'No open positions.'}
@@ -44,7 +54,7 @@ export function PositionsTable({ podId }: PositionsTableProps) {
           </tr>
         </thead>
         <tbody>
-          {positions.map((pos) => {
+          {rows.map((pos) => {
             const pnl = pos.unrealized_pnl ?? 0
             const pnlPct =
               pos.avg_entry_price && pos.quantity

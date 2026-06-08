@@ -5,10 +5,12 @@ import { formatCompact, formatPct } from '@/lib/formatters'
 import { ASSET_CLASS_COLORS, ASSET_CLASS_LABELS } from '@/lib/metrics'
 import { cn } from '@/lib/cn'
 import type { Pod } from '@/types/db'
+import type { LivePodSnapshot } from '@/hooks/useLiveSnapshots'
 import { LineChart, Line, ResponsiveContainer, Tooltip } from 'recharts'
 
 interface PodCardProps {
   pod: Pod
+  live?: LivePodSnapshot
 }
 
 function Sparkline({ podId }: { podId: string }) {
@@ -28,26 +30,27 @@ function Sparkline({ podId }: { podId: string }) {
   )
 }
 
-export function PodCard({ pod }: PodCardProps) {
+export function PodCard({ pod, live }: PodCardProps) {
   const { data: history } = useNavHistory(pod.id, 1)
   const { data: metrics } = useMetrics(pod.id)
   const accentColor = ASSET_CLASS_COLORS[pod.asset_class] ?? '#6366f1'
 
   const latest = history?.[history.length - 1]
-  const nav = latest?.nav ?? pod.allocated_capital
-  const dayReturn = latest?.daily_return ?? null
-  const positive = (dayReturn ?? 0) >= 0
-  const returnLabel = dayReturn != null ? formatPct(Math.abs(dayReturn)) : '0.0%'
+  const nav = live?.nav ?? latest?.nav ?? pod.allocated_capital
+  const totalReturn = live?.total_return ?? (pod.allocated_capital ? (Number(nav) / pod.allocated_capital) - 1 : null)
+  const dayReturn = live?.daily_return ?? latest?.daily_return ?? null
+  const positive = (totalReturn ?? dayReturn ?? 0) >= 0
+  const returnLabel = totalReturn != null ? formatPct(totalReturn) : dayReturn != null ? formatPct(dayReturn) : '0.00%'
 
   return (
     <Link
       to={`/pod/${pod.id}`}
-      className="group block overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-lg dark:border-white/10 dark:bg-[#0d1014] dark:hover:border-white/20"
+      className="group block overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-400 hover:shadow-lg dark:border-white/10 dark:bg-[#0d1014] dark:hover:border-white/25"
     >
       <div className="p-4">
         <div className="mb-4 flex items-start gap-3">
           <div
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-sm font-black text-white"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-sm font-black text-white"
             style={{ backgroundColor: accentColor }}
           >
             {pod.name.slice(0, 2).toUpperCase()}
@@ -61,7 +64,10 @@ export function PodCard({ pod }: PodCardProps) {
             </span>
           </div>
           <div className="shrink-0 text-right">
-            <p className="text-xs text-zinc-500">NAV</p>
+            <p className="flex items-center justify-end gap-1 text-xs text-zinc-500">
+              <span className={cn('h-1.5 w-1.5 rounded-full', live?.live ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,.9)]' : 'bg-zinc-400')} />
+              NAV
+            </p>
             <p className="text-base font-black text-zinc-950 dark:text-white tabular-nums">{formatCompact(nav)}</p>
           </div>
         </div>
@@ -69,13 +75,13 @@ export function PodCard({ pod }: PodCardProps) {
         <Sparkline podId={pod.id} />
 
         <div className="mt-4 grid grid-cols-2 gap-2">
-          <div className={cn('rounded-xl px-3 py-2 text-center font-bold', positive ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' : 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300')}>
-            <p className="text-xs opacity-70">{positive ? 'Up' : 'Down'}</p>
+          <div className={cn('rounded-lg px-3 py-2 text-center font-bold', positive ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' : 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-300')}>
+            <p className="text-xs opacity-70">{positive ? 'Gain' : 'Drawdown'}</p>
             <p className="text-lg tabular-nums">{returnLabel}</p>
           </div>
-          <div className="rounded-xl bg-blue-50 px-3 py-2 text-center font-bold text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
-            <p className="text-xs opacity-70">Capital</p>
-            <p className="text-lg tabular-nums">{formatCompact(pod.allocated_capital)}</p>
+          <div className="rounded-lg bg-cyan-50 px-3 py-2 text-center font-bold text-cyan-700 dark:bg-cyan-500/10 dark:text-cyan-300">
+            <p className="text-xs opacity-70">Gross Notional</p>
+            <p className="text-lg tabular-nums">{formatCompact(live?.gross_notional ?? 0)}</p>
           </div>
         </div>
 

@@ -566,7 +566,7 @@ async function loadTradeActivity() {
       const pod = (r.pods && r.pods.name) || r.pod_id;
       tr.innerHTML = `<td>${fmtDate(r.executed_at)}</td><td>${trader}</td><td>${pod}</td>
         <td><strong>${r.symbol}</strong></td><td><span class="tag ${r.side}">${r.side}</span></td>
-        <td>${Number(r.quantity || 0).toLocaleString()}</td><td>${fmt(r.notional)}</td><td class="muted">${r.status || '-'}</td>`;
+        <td>${Number(r.quantity || 0).toLocaleString()}</td><td>${fmt(r.computed_notional ?? r.notional)}</td><td class="muted">${r.status || '-'}</td>`;
       tb.appendChild(tr);
     }
   } catch (e) { toast(e.message, 'err'); }

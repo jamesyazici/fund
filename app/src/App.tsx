@@ -42,14 +42,14 @@ function Layout({ children }: { children: React.ReactNode }) {
   const topics = ['All', 'Equities', 'Crypto', 'Options', 'Fixed Income', 'FX', 'Futures']
 
   return (
-    <div className="min-h-screen bg-[#f7f7f4] text-zinc-950 dark:bg-[#08090b] dark:text-zinc-100">
+    <div className="min-h-screen bg-[#f4f7f8] text-zinc-950 dark:bg-[#08090b] dark:text-zinc-100">
       <header className="sticky top-0 z-50 border-b border-zinc-200 bg-white/95 backdrop-blur-xl dark:border-white/10 dark:bg-[#0b0d10]/95">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
           <NavLink to="/" className="flex items-center gap-2 font-bold text-zinc-900 dark:text-white tracking-tight">
             <span className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white shadow-sm">
               <Activity className="h-4 w-4" />
             </span>
-            <span className="hidden sm:inline">RQFC Markets</span>
+            <span className="hidden sm:inline">RQFC Live</span>
           </NavLink>
           <div className="hidden min-w-0 flex-1 items-center rounded-full border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-500 dark:border-white/10 dark:bg-white/[0.04] md:flex">
             <Search className="mr-2 h-4 w-4" />
@@ -80,7 +80,7 @@ function Layout({ children }: { children: React.ReactNode }) {
       </header>
       <main className="mx-auto max-w-7xl px-4 py-5 sm:px-6 sm:py-7">{children}</main>
       <footer className="border-t border-zinc-200/80 dark:border-white/10 mt-16 py-6 text-center text-xs text-zinc-500 dark:text-zinc-600">
-        Public, read-only view · Data sourced from Supabase · Updated in real time
+        Public, read-only view · Live Alpaca marks with Supabase history fallback
       </footer>
     </div>
   )

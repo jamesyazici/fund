@@ -15,9 +15,10 @@ import { format } from 'date-fns'
 interface NavChartProps {
   podId: string
   startingCapital: number
+  liveNav?: number
 }
 
-export function NavChart({ podId, startingCapital }: NavChartProps) {
+export function NavChart({ podId, startingCapital, liveNav }: NavChartProps) {
   const { data: history, isLoading } = useNavHistory(podId)
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme === 'dark'
@@ -42,7 +43,8 @@ export function NavChart({ podId, startingCapital }: NavChartProps) {
   }))
 
   const latest = chartData[chartData.length - 1]
-  const gain = latest ? latest.cumReturn : 0
+  const displayNav = liveNav ?? latest?.nav
+  const gain = displayNav ? (displayNav - startingCapital) / startingCapital : 0
   const stroke = gain >= 0 ? '#34d399' : '#f87171'
 
   const gridStroke = isDark ? '#ffffff10' : '#00000010'
@@ -55,7 +57,7 @@ export function NavChart({ podId, startingCapital }: NavChartProps) {
     <div>
       <div className="flex items-end gap-3 mb-4">
         <span className="text-2xl font-bold text-zinc-900 dark:text-white">
-          {formatCompact(latest?.nav)}
+          {formatCompact(displayNav)}
         </span>
         <span
           className={`text-sm font-medium pb-0.5 ${
