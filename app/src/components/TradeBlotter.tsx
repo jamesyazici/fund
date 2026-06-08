@@ -11,8 +11,9 @@ interface TradeBlotterProps {
 
 function TradeRow({ trade }: { trade: Trade }) {
   const isBuy = trade.side === 'buy'
+  const traderName = trade.traders?.display_name ?? 'Unknown'
   return (
-    <tr className="border-b border-zinc-100 hover:bg-zinc-50 dark:border-white/5 dark:hover:bg-white/5 transition-colors">
+    <tr className="border-b border-zinc-100 transition-colors hover:bg-zinc-50/80 dark:border-white/5 dark:hover:bg-white/[0.04]">
       <td className="py-2.5 px-3 text-xs text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
         {formatDateTime(trade.executed_at)}
       </td>
@@ -39,6 +40,9 @@ function TradeRow({ trade }: { trade: Trade }) {
       </td>
       <td className="py-2.5 px-3 text-right text-zinc-700 dark:text-zinc-200 tabular-nums">
         {formatCurrency(trade.notional)}
+      </td>
+      <td className="py-2.5 px-3 text-zinc-700 dark:text-zinc-200 whitespace-nowrap">
+        {traderName}
       </td>
       <td className="py-2.5 px-3 text-xs text-zinc-500 capitalize">
         {trade.asset_class.replace('_', ' ')}
@@ -70,16 +74,17 @@ export function TradeBlotter({ podId, limit = 50 }: TradeBlotterProps) {
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-white/10">
+    <div className="overflow-x-auto rounded-2xl border border-zinc-200/80 bg-white/80 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/[0.04]">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-zinc-200 bg-zinc-50 dark:border-white/10 dark:bg-white/5">
+          <tr className="border-b border-zinc-200 bg-zinc-50/80 dark:border-white/10 dark:bg-white/[0.06]">
             <th className="py-2 px-3 text-left text-xs text-zinc-500 font-medium">Time</th>
             <th className="py-2 px-3 text-left text-xs text-zinc-500 font-medium">Symbol</th>
             <th className="py-2 px-3 text-left text-xs text-zinc-500 font-medium">Side</th>
             <th className="py-2 px-3 text-right text-xs text-zinc-500 font-medium">Qty</th>
             <th className="py-2 px-3 text-right text-xs text-zinc-500 font-medium">Price</th>
             <th className="py-2 px-3 text-right text-xs text-zinc-500 font-medium">Notional</th>
+            <th className="py-2 px-3 text-left text-xs text-zinc-500 font-medium">Trader</th>
             <th className="py-2 px-3 text-left text-xs text-zinc-500 font-medium">Class</th>
           </tr>
         </thead>

@@ -364,6 +364,16 @@ def admin_list_traders(actor: dict = Depends(get_admin_actor)):
     return db.list_traders()
 
 
+@app.get("/admin/trades")
+def admin_list_trade_activity(
+    trader_id: str = None,
+    pod_id: str = None,
+    limit: int = 100,
+    actor: dict = Depends(get_admin_actor),
+):
+    return db.list_trade_activity(trader_id=trader_id, pod_id=pod_id, limit=limit)
+
+
 @app.post("/admin/traders")
 def admin_create_trader(req: CreateTraderRequest, actor: dict = Depends(get_admin_actor)):
     """Create an rqfc account: a Supabase Auth login + a linked trader row."""

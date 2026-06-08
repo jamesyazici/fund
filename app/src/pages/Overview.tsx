@@ -12,12 +12,31 @@ function TotalAUM({ pods }: { pods: { id: string; allocated_capital: number }[] 
   const totalStarting = navData.reduce((acc, p) => acc + p.capital, 0)
 
   return (
-    <div className="text-center py-10">
-      <p className="text-sm text-zinc-500 uppercase tracking-widest mb-1">Total AUM</p>
-      <p className="text-5xl font-extrabold text-zinc-900 dark:text-white tabular-nums">
-        {formatCompact(totalStarting)}
-      </p>
-      <p className="text-sm text-zinc-500 dark:text-zinc-600 mt-1">across {pods.length} pod{pods.length !== 1 ? 's' : ''}</p>
+    <div className="rounded-3xl border border-zinc-200/80 bg-white/80 p-6 shadow-sm backdrop-blur dark:border-white/10 dark:bg-white/[0.04] sm:p-8">
+      <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-widest mb-3">
+            Live fund dashboard
+          </p>
+          <h1 className="max-w-2xl text-4xl font-black tracking-tight text-zinc-950 dark:text-white sm:text-6xl">
+            Pod performance, positions, and trades in one view.
+          </h1>
+        </div>
+        <div className="grid min-w-64 grid-cols-2 gap-3">
+          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 dark:border-white/10 dark:bg-zinc-950/50">
+            <p className="text-xs text-zinc-500 uppercase tracking-wide">Total AUM</p>
+            <p className="mt-1 text-3xl font-extrabold text-zinc-950 dark:text-white tabular-nums">
+              {formatCompact(totalStarting)}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4 dark:border-white/10 dark:bg-zinc-950/50">
+            <p className="text-xs text-zinc-500 uppercase tracking-wide">Pods</p>
+            <p className="mt-1 text-3xl font-extrabold text-zinc-950 dark:text-white tabular-nums">
+              {pods.length}
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -48,13 +67,16 @@ export function Overview() {
   }
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-8">
       <TotalAUM pods={pods} />
 
       <section>
-        <h2 className="section-heading">
-          Pods
-        </h2>
+        <div className="mb-4 flex items-end justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-zinc-950 dark:text-white">Strategy Pods</h2>
+            <p className="text-sm text-zinc-500">Capital, risk metrics, and latest NAV movement.</p>
+          </div>
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {pods.map((pod) => (
             <PodCard key={pod.id} pod={pod} />
@@ -63,9 +85,10 @@ export function Overview() {
       </section>
 
       <section>
-        <h2 className="section-heading">
-          Recent Trades (Fund-Wide)
-        </h2>
+        <div className="mb-4">
+          <h2 className="text-lg font-bold text-zinc-950 dark:text-white">Recent Trades</h2>
+          <p className="text-sm text-zinc-500">Fund-wide execution feed with trader attribution.</p>
+        </div>
         <TradeBlotter limit={20} />
       </section>
     </div>

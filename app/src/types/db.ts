@@ -41,6 +41,8 @@ export const TradeSchema = z.object({
   alpaca_order_id: z.string().nullable(),
   executed_at: z.string(),
   created_at: z.string(),
+  traders: z.object({ display_name: z.string().nullable() }).nullable().optional(),
+  pods: z.object({ name: z.string().nullable() }).nullable().optional(),
 })
 
 export const PositionSchema = z.object({

@@ -55,6 +55,21 @@ def list_traders():
     return res.data or []
 
 
+def list_trade_activity(trader_id: str = None, pod_id: str = None, limit: int = 100):
+    limit = max(1, min(int(limit or 100), 500))
+    q = (
+        sb().table("trades")
+        .select("id, pod_id, trader_id, symbol, side, quantity, price, notional, status, asset_class, executed_at, pods(name), traders(display_name)")
+        .order("executed_at", desc=True)
+        .limit(limit)
+    )
+    if trader_id:
+        q = q.eq("trader_id", trader_id)
+    if pod_id:
+        q = q.eq("pod_id", pod_id)
+    return q.execute().data or []
+
+
 def create_auth_user(email: str, password: str) -> str:
     """Create a confirmed Supabase Auth user, return its id."""
     res = sb().auth.admin.create_user({

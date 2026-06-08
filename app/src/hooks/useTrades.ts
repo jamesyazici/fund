@@ -15,7 +15,7 @@ export function useTrades({ podId, symbol, limit = 100 }: TradeFilters = {}) {
     queryFn: async () => {
       let query = supabase
         .from('trades')
-        .select('*')
+        .select('*, traders(display_name), pods(name)')
         .order('executed_at', { ascending: false })
         .limit(limit)
       if (podId) query = query.eq('pod_id', podId)

@@ -40,9 +40,9 @@ export function PodCard({ pod }: PodCardProps) {
   return (
     <Link
       to={`/pod/${pod.id}`}
-      className="block rounded-2xl border border-zinc-200 bg-white hover:border-zinc-300 hover:shadow-sm dark:border-white/10 dark:bg-zinc-900 dark:hover:border-white/20 transition-all duration-200 hover:-translate-y-0.5 overflow-hidden"
+      className="group block overflow-hidden rounded-2xl border border-zinc-200/80 bg-white/85 shadow-sm backdrop-blur transition-all duration-200 hover:-translate-y-1 hover:border-zinc-300 hover:shadow-xl dark:border-white/10 dark:bg-white/[0.04] dark:hover:border-white/20"
     >
-      <div className="h-1 w-full" style={{ backgroundColor: accentColor }} />
+      <div className="h-1 w-full opacity-90" style={{ backgroundColor: accentColor }} />
       <div className="p-5">
         <div className="flex items-start justify-between gap-2 mb-3">
           <div>
@@ -77,14 +77,14 @@ export function PodCard({ pod }: PodCardProps) {
 
         <Sparkline podId={pod.id} />
 
-        <div className="mt-3 grid grid-cols-3 gap-2 text-center border-t border-zinc-100 dark:border-white/5 pt-3">
-          <div>
+        <div className="mt-4 grid grid-cols-3 gap-2 border-t border-zinc-100 pt-3 text-center dark:border-white/10">
+          <div className="rounded-xl bg-zinc-50 p-2 dark:bg-zinc-950/50">
             <p className="text-[10px] text-zinc-500 uppercase tracking-wide">Sharpe</p>
             <p className="text-sm font-medium text-zinc-900 dark:text-white">
               {metrics?.sharpe != null ? metrics.sharpe.toFixed(2) : '—'}
             </p>
           </div>
-          <div>
+          <div className="rounded-xl bg-zinc-50 p-2 dark:bg-zinc-950/50">
             <p className="text-[10px] text-zinc-500 uppercase tracking-wide">Ann. Ret.</p>
             <p
               className={cn(
@@ -97,7 +97,7 @@ export function PodCard({ pod }: PodCardProps) {
               {metrics?.annualized_return != null ? formatPct(metrics.annualized_return) : '—'}
             </p>
           </div>
-          <div>
+          <div className="rounded-xl bg-zinc-50 p-2 dark:bg-zinc-950/50">
             <p className="text-[10px] text-zinc-500 uppercase tracking-wide">β</p>
             <p className="text-sm font-medium text-zinc-900 dark:text-white">
               {metrics?.beta != null ? metrics.beta.toFixed(2) : '—'}

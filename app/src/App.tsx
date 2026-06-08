@@ -1,4 +1,5 @@
 import { HashRouter, Routes, Route, NavLink } from 'react-router-dom'
+import { Activity } from 'lucide-react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Overview } from '@/pages/Overview'
 import { PodDetail } from '@/pages/PodDetail'
@@ -39,13 +40,16 @@ function NavItem({ to, label }: { to: string; label: string }) {
 
 function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
-      <header className="sticky top-0 z-50 border-b border-zinc-200 bg-zinc-50/80 backdrop-blur-md dark:border-white/5 dark:bg-zinc-950/80">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.10),transparent_30rem),radial-gradient(circle_at_top_right,rgba(16,185,129,0.10),transparent_26rem),#f8fafc] text-zinc-900 dark:bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.18),transparent_30rem),radial-gradient(circle_at_top_right,rgba(16,185,129,0.12),transparent_26rem),#05070d] dark:text-zinc-100">
+      <header className="sticky top-0 z-50 border-b border-zinc-200/80 bg-white/75 backdrop-blur-xl dark:border-white/10 dark:bg-zinc-950/70">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 flex items-center justify-between h-14">
-          <NavLink to="/" className="font-bold text-zinc-900 dark:text-white tracking-tight">
+          <NavLink to="/" className="flex items-center gap-2 font-bold text-zinc-900 dark:text-white tracking-tight">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-zinc-900 text-white dark:bg-white dark:text-zinc-950">
+              <Activity className="h-4 w-4" />
+            </span>
             Fund Portal
           </NavLink>
-          <nav className="flex items-center gap-6">
+          <nav className="flex items-center gap-4 sm:gap-6">
             <NavItem to="/" label="Overview" />
             <NavItem to="/trades" label="Trades" />
             <NavItem to="/about" label="Methodology" />
@@ -53,8 +57,8 @@ function Layout({ children }: { children: React.ReactNode }) {
           </nav>
         </div>
       </header>
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8">{children}</main>
-      <footer className="border-t border-zinc-200 dark:border-white/5 mt-16 py-6 text-center text-xs text-zinc-500 dark:text-zinc-600">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-10">{children}</main>
+      <footer className="border-t border-zinc-200/80 dark:border-white/10 mt-16 py-6 text-center text-xs text-zinc-500 dark:text-zinc-600">
         Public, read-only view · Data sourced from Supabase · Updated in real time
       </footer>
     </div>
