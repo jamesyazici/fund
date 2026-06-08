@@ -357,6 +357,20 @@ def public_intraday_nav(pod_id: str, minutes: int = 390):
         raise HTTPException(status_code=400, detail=str(getattr(e, "detail", e)))
 
 
+@app.get("/public/pods/{pod_id}/notional-history")
+def public_notional_history(pod_id: str, minutes: int = 390):
+    if not db.get_pod(pod_id):
+        raise HTTPException(404, "Pod not found.")
+    try:
+        return {
+            "pod_id": pod_id,
+            "timeframe": "1Min",
+            "rows": alp.get_position_notional_history(pod_id, minutes),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(getattr(e, "detail", e)))
+
+
 # ── Market data (any authenticated trader) ────────────────────────────────────
 
 @app.get("/market/price")

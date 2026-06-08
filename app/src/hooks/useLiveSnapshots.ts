@@ -27,6 +27,12 @@ const IntradayNavRowSchema = z.object({
   minute_return: z.number().nullable(),
 })
 
+const NotionalHistoryRowSchema = z.object({
+  timestamp: z.string(),
+  gross_notional: z.number(),
+  net_notional: z.number(),
+})
+
 export const LivePodSnapshotSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -58,6 +64,7 @@ const LiveSnapshotsResponseSchema = z.object({
 export type LivePodSnapshot = z.infer<typeof LivePodSnapshotSchema>
 export type LivePosition = z.infer<typeof LivePositionSchema>
 export type IntradayNavRow = z.infer<typeof IntradayNavRowSchema>
+export type NotionalHistoryRow = z.infer<typeof NotionalHistoryRowSchema>
 
 export function useLiveSnapshots() {
   return useQuery({
@@ -96,6 +103,25 @@ export function useIntradayNav(podId: string, minutes = 390) {
         pod_id: z.string(),
         timeframe: z.literal('1Min'),
         rows: z.array(IntradayNavRowSchema),
+      }).parse(await response.json())
+      return data.rows
+    },
+    enabled: !!podId,
+    refetchInterval: 60_000,
+    staleTime: 55_000,
+  })
+}
+
+export function useNotionalHistory(podId: string, minutes = 390) {
+  return useQuery({
+    queryKey: ['public-notional-history', podId, minutes],
+    queryFn: async () => {
+      const response = await fetch(backendUrl(`/public/pods/${podId}/notional-history?minutes=${minutes}`))
+      if (!response.ok) throw new Error(`Notional history failed: ${response.status}`)
+      const data = z.object({
+        pod_id: z.string(),
+        timeframe: z.literal('1Min'),
+        rows: z.array(NotionalHistoryRowSchema),
       }).parse(await response.json())
       return data.rows
     },

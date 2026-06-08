@@ -139,14 +139,31 @@ def get_account(pod_id: str) -> dict:
 
 def get_positions(pod_id: str) -> list:
     positions = trading_client(pod_id).get_all_positions()
-    return [{
-        "symbol":          p.symbol,
-        "quantity":        float(p.qty),
-        "avg_entry_price": float(p.avg_entry_price),
-        "current_price":   float(p.current_price) if p.current_price else None,
-        "market_value":    float(p.market_value) if p.market_value else None,
-        "unrealized_pnl":  float(p.unrealized_pl) if p.unrealized_pl else None,
-    } for p in positions]
+    symbols = [p.symbol for p in positions]
+    latest_prices = get_latest_prices(pod_id, symbols) if symbols else {}
+    rows = []
+    for p in positions:
+        quantity = float(p.qty)
+        avg_entry = float(p.avg_entry_price)
+        latest_price = latest_prices.get(p.symbol)
+        current_price = latest_price if latest_price is not None else (
+            float(p.current_price) if p.current_price else None
+        )
+        market_value = (quantity * current_price) if current_price is not None else (
+            float(p.market_value) if p.market_value else None
+        )
+        unrealized_pnl = ((current_price - avg_entry) * quantity) if current_price is not None else (
+            float(p.unrealized_pl) if p.unrealized_pl else None
+        )
+        rows.append({
+            "symbol":          p.symbol,
+            "quantity":        quantity,
+            "avg_entry_price": avg_entry,
+            "current_price":   round(current_price, 4) if current_price is not None else None,
+            "market_value":    round(market_value, 2) if market_value is not None else None,
+            "unrealized_pnl":  round(unrealized_pnl, 2) if unrealized_pnl is not None else None,
+        })
+    return rows
 
 
 def get_nav_history(pod_id: str, days: int = 365) -> list:
@@ -199,6 +216,42 @@ def get_intraday_nav_history(pod_id: str, minutes: int = 390) -> list:
     return rows
 
 
+def get_position_notional_history(pod_id: str, minutes: int = 390) -> list:
+    """Minute-level gross/net notional for current holdings using 1Min bars."""
+    positions = trading_client(pod_id).get_all_positions()
+    holdings = {p.symbol: float(p.qty) for p in positions if float(p.qty) != 0}
+    if not holdings:
+        return []
+
+    dc = data_client(pod_id)
+    minutes = max(1, min(int(minutes or 390), 1440))
+    start = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+    req = StockBarsRequest(
+        symbol_or_symbols=list(holdings.keys()),
+        timeframe=TimeFrame.Minute,
+        start=start,
+    )
+    bars_by_symbol = dc.get_stock_bars(req).data
+    by_ts: dict[str, dict] = {}
+    for symbol, bars in bars_by_symbol.items():
+        qty = holdings.get(symbol, 0)
+        for bar in bars:
+            ts = bar.timestamp.replace(second=0, microsecond=0).isoformat()
+            row = by_ts.setdefault(ts, {"timestamp": ts, "gross_notional": 0.0, "net_notional": 0.0})
+            value = qty * float(bar.close)
+            row["gross_notional"] += abs(value)
+            row["net_notional"] += value
+
+    return [
+        {
+            "timestamp": row["timestamp"],
+            "gross_notional": round(row["gross_notional"], 2),
+            "net_notional": round(row["net_notional"], 2),
+        }
+        for row in sorted(by_ts.values(), key=lambda r: r["timestamp"])
+    ]
+
+
 # ── Market data ──────────────────────────────────────────────────────────────
 
 def get_price(pod_id: str, symbol: str) -> float:
@@ -206,6 +259,24 @@ def get_price(pod_id: str, symbol: str) -> float:
     req = StockLatestTradeRequest(symbol_or_symbols=symbol.upper())
     trade = dc.get_stock_latest_trade(req)[symbol.upper()]
     return float(trade.price)
+
+
+def get_latest_prices(pod_id: str, symbols: list[str]) -> dict[str, float]:
+    if not symbols:
+        return {}
+    dc = data_client(pod_id)
+    upper = [s.upper() for s in symbols]
+    try:
+        trades = dc.get_stock_latest_trade(StockLatestTradeRequest(symbol_or_symbols=upper))
+        return {symbol: float(trades[symbol].price) for symbol in upper if symbol in trades}
+    except Exception:
+        prices = {}
+        for symbol in upper:
+            try:
+                prices[symbol] = get_price(pod_id, symbol)
+            except Exception:
+                continue
+        return prices
 
 
 def get_bars(pod_id: str, symbol: str, days: int = 30) -> list:

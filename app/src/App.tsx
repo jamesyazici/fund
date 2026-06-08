@@ -18,8 +18,8 @@ const queryClient = new QueryClient({
 
 function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-[#050706] text-zinc-100">
-      <main className="mx-auto max-w-[1440px] px-3 py-3 sm:px-5 sm:py-5">{children}</main>
+    <div className="min-h-screen bg-[#f6f6f3] text-black">
+      <main>{children}</main>
     </div>
   )
 }
