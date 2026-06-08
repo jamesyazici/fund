@@ -18,37 +18,37 @@ export function Overview() {
   const totalReturn = totalAllocated ? totalNav / totalAllocated - 1 : null
 
   if (isLoading) {
-    return <div className="min-h-screen border border-black bg-[#f6f6f3]" />
+    return <div className="min-h-screen border border-black bg-white" />
   }
 
   if (error || !pods?.length) {
     return (
-      <div className="grid min-h-screen place-items-center bg-[#f6f6f3] font-mono text-sm text-black">
+      <div className="grid min-h-screen place-items-center bg-white font-mono text-sm text-black">
         <div className="border border-black bg-white p-4">No public fund data available.</div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen overflow-hidden border border-black bg-[#f6f6f3] text-black">
-      <div className="grid h-10 grid-cols-[220px_minmax(0,1fr)_360px] items-center border-b border-black bg-[#f7f7f4] font-mono text-[11px] uppercase tracking-[0.12em] max-lg:grid-cols-[180px_minmax(0,1fr)]">
+    <div className="min-h-screen overflow-hidden border border-black bg-white text-black">
+      <div className="grid h-10 grid-cols-[220px_minmax(0,1fr)_360px] items-center border-b border-black bg-white font-mono text-[11px] uppercase tracking-[0.12em] max-lg:grid-cols-[180px_minmax(0,1fr)]">
         <div className="px-5 font-serif text-2xl font-black normal-case tracking-[-0.08em]">
           RQFC<span className="ml-1 font-mono text-[10px] tracking-normal">by students</span>
         </div>
         <div className="flex justify-center gap-8 font-black">
-          <span>Live</span>
+          <Link to="/">Live</Link>
           <span>|</span>
-          <span>Funds</span>
+          <a href="#funds">Funds</a>
           <span>|</span>
-          <span>Trades</span>
+          <Link to="/trades">Trades</Link>
         </div>
         <div className="flex justify-end gap-4 px-5 text-[10px] max-lg:hidden">
-          <span>Join transparency waitlist ↗</span>
-          <span>About RQFC ↗</span>
+          <a href="mailto:rqfc@example.com">Join transparency waitlist ↗</a>
+          <Link to="/about">About RQFC ↗</Link>
         </div>
       </div>
 
-      <div className="grid grid-cols-6 border-b border-black bg-[#f7f7f4] font-mono text-[11px] max-md:grid-cols-2">
+      <div className="grid grid-cols-6 border-b border-black bg-white font-mono text-[11px] max-md:grid-cols-2">
         {pods.slice(0, 6).map((pod) => {
           const live = livePods?.find((item) => item.id === pod.id)
           return (
@@ -60,7 +60,7 @@ export function Overview() {
         })}
       </div>
 
-      <div className="grid border-b border-black bg-[#f7f7f4] font-mono text-[11px]">
+      <div className="grid border-b border-black bg-white font-mono text-[11px]">
         <div className="flex items-center justify-between px-4 py-2">
           <div>
             HIGHEST: <span className="font-black">{featured?.name}</span>{' '}
@@ -81,7 +81,7 @@ export function Overview() {
 
       <div className="grid h-[calc(100vh-8.5rem)] min-h-[680px] grid-cols-[minmax(0,1fr)_400px] max-xl:grid-cols-1 max-xl:h-auto">
         <main className="min-h-0">
-          <div className="grid grid-cols-[1fr_1fr_1fr] border-b border-black bg-[#f7f7f4] font-mono text-[11px] max-md:grid-cols-1">
+          <div className="grid grid-cols-[1fr_1fr_1fr] border-b border-black bg-white font-mono text-[11px] max-md:grid-cols-1">
             <div className="border-r border-black p-3 max-md:border-b max-md:border-r-0">
               <div className="font-black uppercase text-zinc-500">Total Account Value</div>
               <div className="mt-1 font-black">{formatCurrency(totalNav)}</div>
@@ -102,7 +102,7 @@ export function Overview() {
             <div className="grid h-full place-items-center font-mono text-xs">No featured pod.</div>
           )}
 
-          <div className="grid grid-cols-5 border-t border-black bg-[#f7f7f4] font-mono text-[10px] max-lg:grid-cols-2">
+          <div id="funds" className="grid grid-cols-5 border-t border-black bg-white font-mono text-[10px] max-lg:grid-cols-2">
             {pods.slice(0, 5).map((pod) => {
               const live = livePods?.find((item) => item.id === pod.id)
               return (
@@ -118,7 +118,7 @@ export function Overview() {
           </div>
         </main>
 
-        <ConsoleTradeFeed limit={26} />
+        <ConsoleTradeFeed limit={26} positions={livePods?.flatMap((pod) => pod.positions) ?? []} />
       </div>
     </div>
   )

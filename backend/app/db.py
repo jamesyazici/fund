@@ -79,6 +79,18 @@ def list_trade_activity(trader_id: str = None, pod_id: str = None, limit: int = 
     return rows
 
 
+def list_pod_trades_for_marking(pod_id: str) -> list[dict]:
+    """Trades ordered oldest-first for deriving public mark-to-market positions."""
+    res = (
+        sb().table("trades")
+        .select("id, symbol, side, quantity, price, notional, filled_qty, asset_class, status, executed_at")
+        .eq("pod_id", pod_id)
+        .order("executed_at", desc=False)
+        .execute()
+    )
+    return res.data or []
+
+
 def create_auth_user(email: str, password: str) -> str:
     """Create a confirmed Supabase Auth user, return its id."""
     res = sb().auth.admin.create_user({

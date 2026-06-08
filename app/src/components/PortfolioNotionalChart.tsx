@@ -31,7 +31,7 @@ export function PortfolioNotionalChart({ podId, live }: PortfolioNotionalChartPr
   }
 
   return (
-    <div className="relative h-full min-h-[520px] bg-[#f5f5f2]">
+    <div className="relative h-full min-h-[520px] bg-white">
       <div className="absolute left-1/2 top-3 z-10 -translate-x-1/2 font-mono text-[11px] font-black uppercase tracking-[0.12em]">
         Total Portfolio Notional Value
       </div>

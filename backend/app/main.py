@@ -5,6 +5,7 @@ writes everything to Supabase. Traders authenticate with backend sessions,
 rqfc API keys, or legacy Supabase JWTs.
 """
 from pathlib import Path
+from datetime import datetime, timezone
 import json
 import secrets
 
@@ -294,6 +295,8 @@ def _live_pod_snapshot(pod: dict) -> dict:
     try:
         account = alp.get_account(pod["id"])
         positions = alp.get_positions(pod["id"])
+        if not positions:
+            positions = _derive_marked_positions_from_trades(pod["id"])
         gross = 0.0
         net = 0.0
         pnl = 0.0
@@ -327,8 +330,81 @@ def _live_pod_snapshot(pod: dict) -> dict:
             "total_return": ((nav / allocated) - 1) if allocated else None,
         })
     except Exception as e:
+        derived_positions = _derive_marked_positions_from_trades(pod["id"])
+        if derived_positions:
+            gross = sum(abs(float(p.get("market_value") or 0)) for p in derived_positions)
+            net = sum(float(p.get("market_value") or 0) for p in derived_positions)
+            pnl = sum(float(p.get("unrealized_pnl") or 0) for p in derived_positions)
+            allocated = snapshot["allocated_capital"]
+            snapshot.update({
+                "live": True,
+                "source": "trade_ledger",
+                "positions": derived_positions,
+                "nav": round(allocated + pnl, 2),
+                "gross_notional": round(gross, 2),
+                "net_notional": round(net, 2),
+                "unrealized_pnl": round(pnl, 2),
+                "live_gain": round(pnl, 2),
+                "total_return": (pnl / allocated) if allocated else None,
+            })
         snapshot["error"] = str(getattr(e, "detail", e))
     return snapshot
+
+
+def _derive_marked_positions_from_trades(pod_id: str) -> list[dict]:
+    """Derive current holdings from logged trades and mark them with latest prices."""
+    lots: dict[str, dict] = {}
+    for trade in db.list_pod_trades_for_marking(pod_id):
+        symbol = str(trade.get("symbol") or "").upper()
+        if not symbol:
+            continue
+        qty = trade.get("filled_qty") or trade.get("quantity")
+        price = trade.get("price")
+        if qty is None or price is None:
+            continue
+        qty = abs(float(qty))
+        price = float(price)
+        position = lots.setdefault(symbol, {"quantity": 0.0, "cost": 0.0, "asset_class": trade.get("asset_class")})
+        if trade.get("side") == "buy":
+            position["quantity"] += qty
+            position["cost"] += qty * price
+        else:
+            if position["quantity"] <= 0:
+                position["quantity"] -= qty
+                position["cost"] -= qty * price
+                continue
+            avg_cost = position["cost"] / position["quantity"] if position["quantity"] else price
+            close_qty = min(qty, position["quantity"])
+            position["quantity"] -= close_qty
+            position["cost"] -= avg_cost * close_qty
+            extra_short = qty - close_qty
+            if extra_short > 0:
+                position["quantity"] -= extra_short
+                position["cost"] -= extra_short * price
+
+    symbols = [symbol for symbol, row in lots.items() if abs(row["quantity"]) > 1e-9]
+    try:
+        prices = alp.get_latest_prices(pod_id, symbols) if symbols else {}
+    except Exception:
+        prices = {}
+    rows = []
+    for symbol in symbols:
+        row = lots[symbol]
+        qty = float(row["quantity"])
+        avg_entry = abs(row["cost"] / qty) if qty else 0.0
+        current = prices.get(symbol) or avg_entry
+        market_value = qty * current
+        unrealized = (current - avg_entry) * qty
+        rows.append({
+            "symbol": symbol,
+            "quantity": round(qty, 6),
+            "avg_entry_price": round(avg_entry, 4),
+            "current_price": round(current, 4),
+            "market_value": round(market_value, 2),
+            "unrealized_pnl": round(unrealized, 2),
+            "source": "trade_ledger",
+        })
+    return rows
 
 
 @app.get("/public/live")
@@ -362,12 +438,26 @@ def public_notional_history(pod_id: str, minutes: int = 390):
     if not db.get_pod(pod_id):
         raise HTTPException(404, "Pod not found.")
     try:
-        return {
-            "pod_id": pod_id,
-            "timeframe": "1Min",
-            "rows": alp.get_position_notional_history(pod_id, minutes),
-        }
+        rows = alp.get_position_notional_history(pod_id, minutes)
+        if not rows:
+            positions = _derive_marked_positions_from_trades(pod_id)
+            holdings = {p["symbol"]: float(p["quantity"]) for p in positions if float(p.get("quantity") or 0) != 0}
+            rows = alp.get_notional_history_for_holdings(pod_id, holdings, minutes) if holdings else []
+        return {"pod_id": pod_id, "timeframe": "1Min", "rows": rows}
     except Exception as e:
+        positions = _derive_marked_positions_from_trades(pod_id)
+        if positions:
+            gross = sum(abs(float(p.get("market_value") or 0)) for p in positions)
+            net = sum(float(p.get("market_value") or 0) for p in positions)
+            return {
+                "pod_id": pod_id,
+                "timeframe": "1Min",
+                "rows": [{
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "gross_notional": round(gross, 2),
+                    "net_notional": round(net, 2),
+                }],
+            }
         raise HTTPException(status_code=400, detail=str(getattr(e, "detail", e)))
 
 

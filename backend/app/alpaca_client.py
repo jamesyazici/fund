@@ -220,6 +220,11 @@ def get_position_notional_history(pod_id: str, minutes: int = 390) -> list:
     """Minute-level gross/net notional for current holdings using 1Min bars."""
     positions = trading_client(pod_id).get_all_positions()
     holdings = {p.symbol: float(p.qty) for p in positions if float(p.qty) != 0}
+    return get_notional_history_for_holdings(pod_id, holdings, minutes)
+
+
+def get_notional_history_for_holdings(pod_id: str, holdings: dict[str, float], minutes: int = 390) -> list:
+    """Minute-level gross/net notional for provided holdings using 1Min bars."""
     if not holdings:
         return []
 
