@@ -4,6 +4,9 @@ import { Overview } from '@/pages/Overview'
 import { PodDetail } from '@/pages/PodDetail'
 import { Trades } from '@/pages/Trades'
 import { About } from '@/pages/About'
+import { Leaderboard } from '@/pages/Leaderboard'
+import { Models } from '@/pages/Models'
+import { Blog } from '@/pages/Blog'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { ThemeProvider } from '@/lib/theme'
 
@@ -34,6 +37,9 @@ export default function App() {
               <Routes>
                 <Route path="/" element={<Overview />} />
                 <Route path="/pod/:id" element={<PodDetail />} />
+                <Route path="/leaderboard" element={<Leaderboard />} />
+                <Route path="/models" element={<Models />} />
+                <Route path="/blog" element={<Blog />} />
                 <Route path="/trades" element={<Trades />} />
                 <Route path="/about" element={<About />} />
               </Routes>

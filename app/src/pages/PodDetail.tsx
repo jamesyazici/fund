@@ -63,9 +63,11 @@ export function PodDetail() {
         <div className="flex justify-center gap-8 font-black">
           <Link to="/">Live</Link>
           <span>|</span>
-          <a href="#portfolio">Portfolio</a>
+          <Link to="/leaderboard">Leaderboard</Link>
           <span>|</span>
-          <Link to="/trades">Trades</Link>
+          <Link to="/models">Models</Link>
+          <span>|</span>
+          <Link to="/blog">Blog</Link>
         </div>
         <div className="flex justify-end gap-4 px-5 text-[10px] max-lg:hidden">
           <span>{live?.live ? 'live alpaca marks' : 'snapshot fallback'}</span>
