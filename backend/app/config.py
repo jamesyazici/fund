@@ -28,9 +28,12 @@ class Settings:
         self.alpaca_api_key = os.environ.get("ALPACA_API_KEY")
         self.alpaca_api_secret = os.environ.get("ALPACA_API_SECRET")
 
+        # Public transparency API is GET-only and non-credentialed, so default to
+        # allowing all origins. An empty/blank CORS_ORIGINS is treated as "*" too
+        # (an empty list would otherwise block every browser while curl still works).
         self.cors_origins = [
             o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()
-        ]
+        ] or ["*"]
 
         # Admin portal Google auth. Create a Google OAuth Web client and set its
         # client id here. ADMIN_GOOGLE_EMAILS is comma-separated.
