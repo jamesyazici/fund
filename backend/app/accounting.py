@@ -6,7 +6,7 @@ fallback. Live market data marks remaining positions.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 import re
 
 
@@ -188,6 +188,71 @@ def mark_positions(state: PortfolioState, prices: dict[str, float]) -> tuple[lis
             "source": "fills_and_market_data",
         })
     return rows, {k: round(v, 2) for k, v in totals.items()}
+
+
+def parse_ts(value) -> datetime | None:
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def minute_nav_series(
+    fills: list[dict],
+    closes_by_symbol: dict[str, list[tuple[datetime, float]]],
+    allocated_capital: float,
+) -> list[dict]:
+    """Minute-by-minute account value: fills replayed against 1Min market bars.
+
+    At each bar timestamp t: NAV(t) = allocated capital + realized P&L of all
+    fills up to t − fees + unrealized P&L of the positions open at t marked to
+    the latest 1Min close (forward-filled per symbol). Equivalent to
+    cash + market value, so a 2% move in a holding moves the pod accordingly.
+    """
+    timeline = sorted({ts for bars in closes_by_symbol.values() for ts, _ in bars})
+    if not timeline:
+        return []
+
+    events = sorted(
+        (
+            (parse_ts(f.get("filled_at")), f)
+            for f in fills
+            if f.get("side") in {"buy", "sell"} and float(f.get("quantity") or 0) != 0
+        ),
+        key=lambda e: e[0] or datetime.min.replace(tzinfo=timezone.utc),
+    )
+    events = [e for e in events if e[0] is not None]
+
+    state = PortfolioState()
+    last_price: dict[str, float] = {}
+    bar_idx = {sym: 0 for sym in closes_by_symbol}
+    fill_idx = 0
+    series: list[dict] = []
+
+    for t in timeline:
+        while fill_idx < len(events) and events[fill_idx][0] <= t:
+            apply_fill(state, events[fill_idx][1])
+            fill_idx += 1
+        for sym, bars in closes_by_symbol.items():
+            j = bar_idx[sym]
+            while j < len(bars) and bars[j][0] <= t:
+                last_price[sym] = bars[j][1]
+                j += 1
+            bar_idx[sym] = j
+        unrealized = 0.0
+        for sym, pos in state.positions.items():
+            if abs(pos.quantity) < 1e-9:
+                continue
+            px = last_price.get(sym, pos.avg_entry_price)
+            unrealized += (px - pos.avg_entry_price) * pos.quantity * pos.multiplier
+        nav = allocated_capital + state.realized_pnl - state.fees + unrealized
+        series.append({"t": t.isoformat(), "value": round(nav, 2)})
+    return series
 
 
 def iso_now() -> str:

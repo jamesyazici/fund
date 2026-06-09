@@ -23,21 +23,32 @@ interface Props {
 export function PortfolioChart({ pods, visible, height = 420 }: Props) {
   const shown = visible ? pods.filter((p) => visible.includes(p.id)) : pods
 
+  // merge every pod's 1-min series onto one timeline keyed by timestamp
   const data = useMemo(() => {
-    const len = Math.max(0, ...pods.map((p) => p.nav.length))
-    const rows: Record<string, number | string>[] = []
-    for (let i = 0; i < len; i++) {
-      const row: Record<string, number | string> = { t: pods[0]?.nav[i]?.t ?? String(i) }
+    const stamps = new Set<string>()
+    shown.forEach((p) => p.nav.forEach((n) => stamps.add(n.t)))
+    const byPod = new Map(shown.map((p) => [p.id, new Map(p.nav.map((n) => [n.t, n.value]))]))
+    return [...stamps].sort().map((t) => {
+      const row: Record<string, number | string> = { t }
       shown.forEach((p) => {
-        if (p.nav[i]) row[p.id] = p.nav[i].value
+        const v = byPod.get(p.id)?.get(t)
+        if (v != null) row[p.id] = v
       })
-      rows.push(row)
-    }
-    return rows
-  }, [pods, shown])
+      return row
+    })
+  }, [shown])
+
+  // intraday (1-min bars) → show times; longer history → show dates
+  const intraday = useMemo(() => {
+    if (data.length < 2) return true
+    const span = +new Date(data[data.length - 1].t as string) - +new Date(data[0].t as string)
+    return span <= 48 * 60 * 60 * 1000
+  }, [data])
 
   const fmtAxis = (v: string) =>
-    new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+    intraday
+      ? new Date(v).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+      : new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 
   return (
     <div className="card-soft bg-panel">
@@ -78,7 +89,9 @@ export function PortfolioChart({ pods, visible, height = 420 }: Props) {
                 fontFamily: 'monospace',
                 fontSize: 12,
               }}
-              labelFormatter={(v) => new Date(v).toLocaleString('en-US', { dateStyle: 'medium' })}
+              labelFormatter={(v) =>
+                new Date(v).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
+              }
               formatter={(value: number, name: string) => {
                 const pod = pods.find((p) => p.id === name)
                 return [formatCurrency(value), pod ? `${pod.code}: ${pod.name}` : name]
@@ -92,6 +105,7 @@ export function PortfolioChart({ pods, visible, height = 420 }: Props) {
                 stroke={TINT_LINE[p.tint]}
                 strokeWidth={1.6}
                 dot={false}
+                connectNulls
                 isAnimationActive={false}
               />
             ))}

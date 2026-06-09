@@ -78,7 +78,15 @@ async function getJSON<T>(path: string): Promise<T | null> {
   }
 }
 
+interface NavSeriesPod {
+  pod_id: string
+  name: string
+  series: { t: string; value: number }[]
+}
+
 const fetchLive = () => getJSON<{ pods: LiveSnapshot[] }>('/public/live').then((d) => d?.pods ?? null)
+const fetchNavSeries = () =>
+  getJSON<{ pods: NavSeriesPod[] }>('/public/nav-series?minutes=390').then((d) => d?.pods ?? null)
 const fetchTrades = () => getJSON<{ trades: LiveTrade[] }>('/public/trades?limit=200').then((d) => d?.trades ?? null)
 const fetchTicker = () =>
   getJSON<{ items: { symbol: string; price: number; change_pct: number }[] }>('/public/ticker').then(
@@ -136,6 +144,7 @@ function assemble(
   snaps: LiveSnapshot[] | null,
   liveTrades: LiveTrade[] | null,
   ticker: TickerItem[] | null,
+  navSeries: NavSeriesPod[] | null,
 ): FundData {
   const empty: FundData = {
     pods: [],
@@ -148,6 +157,9 @@ function assemble(
   }
   if (!snaps || snaps.length === 0) return empty
 
+  const minuteNavByPod = new Map((navSeries ?? []).map((n) => [n.pod_id, n.series]))
+  const nowIso = new Date().toISOString()
+
   // first pass: pods with positions + nav + pod-level metrics
   const pods: Pod[] = snaps.map((s, i) => {
     const podId = s.id
@@ -155,11 +167,14 @@ function assemble(
     const accountValue = s.account?.portfolio_value ?? s.nav ?? allocated
     const positions = (s.positions ?? []).map((p, idx) => mapPosition(podId, p, idx))
 
-    // nav series from real history; always anchor the latest point to live value
-    const navSeries: NavPoint[] = (s.nav_series ?? []).map((n) => ({ t: n.t, value: n.value }))
-    const nav = navSeries.length ? navSeries : []
+    // 1-minute live market-data series; recorded history as fallback. The
+    // latest point is always anchored to the live account value so the line
+    // keeps ticking between minute bars.
+    const minute = minuteNavByPod.get(podId)
+    const base = minute?.length ? minute : (s.nav_series ?? [])
+    const nav: NavPoint[] = base.map((n) => ({ t: n.t, value: n.value }))
     if (nav.length === 0 || Math.abs(nav[nav.length - 1].value - accountValue) > 0.01) {
-      nav.push({ t: new Date().toISOString(), value: accountValue })
+      nav.push({ t: nowIso, value: accountValue })
     }
 
     const unrealizedPnl = s.unrealized_pnl ?? round(positions.reduce((a, p) => a + p.unrealizedPnl, 0))
@@ -230,7 +245,7 @@ function assemble(
       const realizedList = mineTrades.map((t) => t.realizedPnl).filter((v): v is number => v != null)
       const realizedSum = round(realizedList.reduce((a, b) => a + b, 0))
       const w = realizedList.filter((v) => v > 0).length
-      traders.push({
+      pod.traders.push({
         id: m.id,
         name: m.name,
         handle: m.name.toLowerCase().replace(/\s+/g, ''),
@@ -248,6 +263,7 @@ function assemble(
         trades: mineTrades.length,
       })
     })
+    traders.push(...pod.traders)
   })
 
   return {
@@ -265,10 +281,12 @@ export function useFund(): FundData {
   const { data: live } = useQuery({ queryKey: ['fund-live'], queryFn: fetchLive, refetchInterval: 5_000, staleTime: 2_000 })
   const { data: liveTrades } = useQuery({ queryKey: ['fund-trades'], queryFn: fetchTrades, refetchInterval: 8_000, staleTime: 4_000 })
   const { data: ticker } = useQuery({ queryKey: ['fund-ticker'], queryFn: fetchTicker, refetchInterval: 15_000, staleTime: 10_000 })
+  // 1Min market bars only change once a minute
+  const { data: navSeries } = useQuery({ queryKey: ['fund-nav'], queryFn: fetchNavSeries, refetchInterval: 60_000, staleTime: 30_000 })
 
   return useMemo(
-    () => assemble(live ?? null, liveTrades ?? null, ticker ?? null),
-    [live, liveTrades, ticker],
+    () => assemble(live ?? null, liveTrades ?? null, ticker ?? null, navSeries ?? null),
+    [live, liveTrades, ticker, navSeries],
   )
 }
 

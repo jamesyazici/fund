@@ -5,9 +5,10 @@ writes everything to Supabase. Traders authenticate with backend sessions,
 rqfc API keys, or legacy Supabase JWTs.
 """
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import json
 import secrets
+import time
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -404,6 +405,72 @@ def _totals_from_live_positions(positions: list[dict]) -> dict:
         "total_pnl": round(unrealized, 2),
         "fees": 0.0,
     }
+
+
+# ── Live 1-minute NAV series (powers the center chart) ───────────────────────
+
+_NAV_SERIES_CACHE: dict = {"at": 0.0, "minutes": None, "payload": None}
+_NAV_SERIES_TTL = 50  # seconds — 1Min bars only change once a minute
+
+
+def _pod_fills(pod_id: str) -> list[dict]:
+    """Recorded fills for a pod, falling back to the trade log."""
+    fills = db.list_order_fills(pod_id)
+    if not fills:
+        trades = db.list_pod_trades_for_marking(pod_id)
+        fills = [f for f in (accounting.fill_from_trade(t) for t in trades) if f]
+    return fills
+
+
+def _minute_nav_for_pod(pod: dict, minutes: int) -> list[dict]:
+    """Replay a pod's fills against live 1Min market bars → minute NAV series.
+
+    When the requested window has no bars (market closed), reaches back to the
+    most recent session so the chart always shows real 1-minute market data.
+    Falls back to the recorded nav history only if market data is unavailable.
+    """
+    allocated = float(pod.get("allocated_capital") or 0)
+    fills = _pod_fills(pod["id"])
+    if not fills:
+        return db.get_nav_series(pod["id"])
+    symbols = sorted({f["symbol"] for f in fills if f.get("symbol")})
+    try:
+        start = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+        closes = alp.get_minute_closes(pod["id"], symbols, start)
+        if not all(closes.get(s) for s in symbols):
+            week = alp.get_minute_closes(pod["id"], symbols, datetime.now(timezone.utc) - timedelta(days=5))
+            closes = {s: pts[-minutes:] for s, pts in week.items() if pts}
+    except Exception:
+        closes = {}
+    series = accounting.minute_nav_series(fills, closes, allocated) if closes else []
+    return series or db.get_nav_series(pod["id"])
+
+
+@app.get("/public/nav-series")
+def public_nav_series(minutes: int = 390):
+    """1-minute live account value of every pod, marked to 1Min market bars.
+
+    Cached briefly server-side since minute bars only change once a minute.
+    """
+    minutes = max(30, min(int(minutes or 390), 1440))
+    now = time.time()
+    if (
+        _NAV_SERIES_CACHE["payload"] is not None
+        and _NAV_SERIES_CACHE["minutes"] == minutes
+        and now - _NAV_SERIES_CACHE["at"] < _NAV_SERIES_TTL
+    ):
+        return _NAV_SERIES_CACHE["payload"]
+    pods = db.sb().table("pods").select("*").order("created_at").execute().data or []
+    payload = {
+        "timeframe": "1Min",
+        "as_of": datetime.now(timezone.utc).isoformat(),
+        "pods": [
+            {"pod_id": p["id"], "name": p["name"], "series": _minute_nav_for_pod(p, minutes)}
+            for p in pods
+        ],
+    }
+    _NAV_SERIES_CACHE.update({"at": now, "minutes": minutes, "payload": payload})
+    return payload
 
 
 @app.get("/public/live")

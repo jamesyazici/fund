@@ -24,10 +24,11 @@ from alpaca.trading.enums import OrderSide, TimeInForce
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockLatestTradeRequest, StockBarsRequest
 from alpaca.data.timeframe import TimeFrame
+from alpaca.data.enums import DataFeed
 
 from .config import get_settings
 from . import db
-from .accounting import parse_instrument
+from .accounting import parse_instrument, parse_ts
 
 
 # ── Credential resolution ────────────────────────────────────────────────────
@@ -347,6 +348,52 @@ def _accumulate_notional_bars(by_ts: dict, bars_by_symbol: dict, holdings: dict[
             value = qty * float(bar.close) * multiplier
             row["gross_notional"] += abs(value)
             row["net_notional"] += value
+
+
+def get_minute_closes(
+    pod_id: str, symbols: list[str], start: datetime,
+) -> dict[str, list[tuple[datetime, float]]]:
+    """1Min close series per symbol — the market data behind the live NAV chart.
+
+    Stocks come from the bars API (falling back to the free IEX feed when the
+    account's plan rejects recent SIP data); options from the options bars API.
+    Returns {symbol: [(minute_timestamp, close), ...]} sorted by time.
+    """
+    upper = [s.upper() for s in symbols]
+    option_symbols = [s for s in upper if parse_instrument(s)["instrument_type"] == "option"]
+    stock_symbols = [s for s in upper if s not in option_symbols]
+    out: dict[str, list[tuple[datetime, float]]] = {}
+
+    if stock_symbols:
+        dc = data_client(pod_id)
+        req = StockBarsRequest(symbol_or_symbols=stock_symbols, timeframe=TimeFrame.Minute, start=start)
+        try:
+            bars_by_symbol = dc.get_stock_bars(req).data
+        except Exception:
+            req = StockBarsRequest(
+                symbol_or_symbols=stock_symbols, timeframe=TimeFrame.Minute,
+                start=start, feed=DataFeed.IEX,
+            )
+            bars_by_symbol = dc.get_stock_bars(req).data
+        for sym, bars in bars_by_symbol.items():
+            out[sym] = [
+                (b.timestamp.replace(second=0, microsecond=0), float(b.close)) for b in bars
+            ]
+
+    if option_symbols:
+        try:
+            for sym, rows in get_option_bars(pod_id, option_symbols, start).items():
+                pts = []
+                for row in rows:
+                    ts = parse_ts(row.get("timestamp"))
+                    if ts is not None:
+                        pts.append((ts.replace(second=0, microsecond=0), float(row["close"])))
+                if pts:
+                    out[sym] = sorted(pts)
+        except Exception:
+            pass
+
+    return {sym: sorted(pts) for sym, pts in out.items()}
 
 
 def get_option_bars(pod_id: str, symbols: list[str], start: datetime) -> dict[str, list[dict]]:
