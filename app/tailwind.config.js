@@ -1,44 +1,45 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  darkMode: ['class'],
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
-        border: 'hsl(var(--border))',
-        input: 'hsl(var(--input))',
-        ring: 'hsl(var(--ring))',
-        background: 'hsl(var(--background))',
-        foreground: 'hsl(var(--foreground))',
-        primary: {
-          DEFAULT: 'hsl(var(--primary))',
-          foreground: 'hsl(var(--primary-foreground))',
-        },
-        secondary: {
-          DEFAULT: 'hsl(var(--secondary))',
-          foreground: 'hsl(var(--secondary-foreground))',
-        },
-        destructive: {
-          DEFAULT: 'hsl(var(--destructive))',
-          foreground: 'hsl(var(--destructive-foreground))',
-        },
-        muted: {
-          DEFAULT: 'hsl(var(--muted))',
-          foreground: 'hsl(var(--muted-foreground))',
-        },
-        accent: {
-          DEFAULT: 'hsl(var(--accent))',
-          foreground: 'hsl(var(--accent-foreground))',
-        },
-        card: {
-          DEFAULT: 'hsl(var(--card))',
-          foreground: 'hsl(var(--card-foreground))',
+        // Warm "newsprint" paper palette (Alpha Arena aesthetic)
+        paper: '#f4f1e9',
+        panel: '#faf8f2',
+        ink: '#1a1916',
+        faint: '#6b6658',
+        line: '#d8d2c4',
+        rule: '#1a1916',
+        gain: '#1f8a4c',
+        loss: '#c0392b',
+        long: '#1f8a4c',
+        short: '#c0392b',
+        highlight: '#e9dca8',
+        link: '#1a1916',
+        // pastel model/pod avatar tints
+        p1: '#f2c9d4',
+        p2: '#cfe8d6',
+        p3: '#cfe0f2',
+        p4: '#e7d6f2',
+        p5: '#f2e2c2',
+        p6: '#c9ecec',
+      },
+      fontFamily: {
+        mono: ['ui-monospace', 'SFMono-Regular', 'SF Mono', 'Menlo', 'Consolas', 'Liberation Mono', 'monospace'],
+        serif: ['"Times New Roman"', 'Times', 'Georgia', 'serif'],
+      },
+      fontSize: {
+        '2xs': ['0.65rem', { lineHeight: '0.9rem' }],
+      },
+      keyframes: {
+        ticker: {
+          '0%': { transform: 'translateX(0)' },
+          '100%': { transform: 'translateX(-50%)' },
         },
       },
-      borderRadius: {
-        lg: 'var(--radius)',
-        md: 'calc(var(--radius) - 2px)',
-        sm: 'calc(var(--radius) - 4px)',
+      animation: {
+        ticker: 'ticker 60s linear infinite',
       },
     },
   },

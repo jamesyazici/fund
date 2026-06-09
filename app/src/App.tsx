@@ -1,52 +1,36 @@
-import { HashRouter, Routes, Route } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { Overview } from '@/pages/Overview'
-import { PodDetail } from '@/pages/PodDetail'
-import { Trades } from '@/pages/Trades'
-import { About } from '@/pages/About'
+import { Layout } from '@/components/Layout'
+import { Live } from '@/pages/Live'
 import { Leaderboard } from '@/pages/Leaderboard'
-import { Models } from '@/pages/Models'
-import { Blog } from '@/pages/Blog'
+import { Pods } from '@/pages/Pods'
+import { PodDetail } from '@/pages/PodDetail'
+import { About } from '@/pages/About'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
-import { ThemeProvider } from '@/lib/theme'
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: {
-      retry: 2,
-      refetchOnWindowFocus: true,
-    },
+    queries: { retry: 1, refetchOnWindowFocus: false },
   },
 })
-
-function Layout({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="min-h-screen bg-white text-black">
-      <main>{children}</main>
-    </div>
-  )
-}
 
 export default function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider>
-        <QueryClientProvider client={queryClient}>
-          <HashRouter>
-            <Layout>
-              <Routes>
-                <Route path="/" element={<Overview />} />
-                <Route path="/pod/:id" element={<PodDetail />} />
-                <Route path="/leaderboard" element={<Leaderboard />} />
-                <Route path="/models" element={<Models />} />
-                <Route path="/blog" element={<Blog />} />
-                <Route path="/trades" element={<Trades />} />
-                <Route path="/about" element={<About />} />
-              </Routes>
-            </Layout>
-          </HashRouter>
-        </QueryClientProvider>
-      </ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <HashRouter>
+          <Layout>
+            <Routes>
+              <Route path="/" element={<Live />} />
+              <Route path="/leaderboard" element={<Leaderboard />} />
+              <Route path="/pods" element={<Pods />} />
+              <Route path="/pods/:id" element={<PodDetail />} />
+              <Route path="/about" element={<About />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Layout>
+        </HashRouter>
+      </QueryClientProvider>
     </ErrorBoundary>
   )
 }

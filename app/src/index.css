@@ -4,57 +4,118 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 4%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 4%;
-    --primary: 238 84% 60%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 240 5% 96%;
-    --secondary-foreground: 240 6% 10%;
-    --muted: 240 5% 96%;
-    --muted-foreground: 240 4% 46%;
-    --accent: 240 5% 96%;
-    --accent-foreground: 240 6% 10%;
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 240 6% 90%;
-    --input: 240 6% 90%;
-    --ring: 238 84% 60%;
-    --radius: 0.5rem;
+    color-scheme: light;
   }
 
-  .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --primary: 238 84% 67%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 240 4% 16%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 4% 16%;
-    --muted-foreground: 240 5% 65%;
-    --accent: 240 4% 16%;
-    --accent-foreground: 0 0% 98%;
-    --destructive: 0 63% 31%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 240 4% 16%;
-    --input: 240 4% 16%;
-    --ring: 238 84% 67%;
+  html,
+  body,
+  #root {
+    height: 100%;
   }
-}
 
-@layer base {
   body {
-    @apply bg-white text-black antialiased;
-    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    font-feature-settings: "tnum" 1, "cv02" 1, "cv03" 1, "cv04" 1;
+    @apply bg-paper text-ink antialiased font-mono;
+    font-size: 13px;
+    line-height: 1.5;
+    font-feature-settings: 'tnum' 1, 'zero' 1;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* faint paper grain / horizontal rules feel */
+  ::selection {
+    background: #1a1916;
+    color: #f4f1e9;
+  }
+
+  a {
+    @apply text-link;
+    text-decoration: none;
   }
 }
 
 @layer components {
-  .section-heading {
-    @apply text-sm font-semibold text-zinc-500 uppercase tracking-widest mb-4 dark:text-zinc-400;
+  /* boxed card with hairline rule */
+  .card {
+    @apply border border-rule bg-panel;
+  }
+
+  .card-soft {
+    @apply border border-line bg-panel;
+  }
+
+  /* small uppercase label */
+  .label {
+    @apply text-2xs uppercase tracking-[0.14em] text-faint;
+  }
+
+  .label-strong {
+    @apply text-2xs uppercase tracking-[0.14em] text-ink font-semibold;
+  }
+
+  /* tabular numbers everywhere numbers matter */
+  .num {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* nav link */
+  .nav-link {
+    @apply text-xs uppercase tracking-[0.18em] text-ink/80 hover:text-ink transition-colors;
+  }
+  .nav-link-active {
+    @apply text-ink;
+    text-decoration: underline;
+    text-underline-offset: 5px;
+    text-decoration-thickness: 2px;
+  }
+
+  /* pill / chip */
+  .chip {
+    @apply inline-flex items-center gap-1 border border-rule bg-paper px-2 py-[3px] text-2xs uppercase tracking-[0.12em];
+  }
+  .chip-active {
+    @apply bg-ink text-paper;
+  }
+
+  /* button */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 border border-rule bg-paper px-3 py-1.5 text-2xs uppercase tracking-[0.14em] hover:bg-ink hover:text-paper transition-colors cursor-pointer;
+  }
+  .btn-solid {
+    @apply bg-ink text-paper hover:bg-ink/85;
+  }
+
+  /* data table */
+  .dtable {
+    @apply w-full border-collapse text-xs num;
+  }
+  .dtable thead th {
+    @apply text-2xs uppercase tracking-[0.1em] text-faint font-semibold text-left px-3 py-2 border-b border-rule whitespace-nowrap;
+  }
+  .dtable tbody td {
+    @apply px-3 py-2 border-b border-line whitespace-nowrap;
+  }
+  .dtable tbody tr:hover {
+    @apply bg-paper;
+  }
+}
+
+@layer utilities {
+  .pos {
+    @apply text-gain;
+  }
+  .neg {
+    @apply text-loss;
+  }
+  /* hide scrollbars on inner feeds while keeping scroll */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  /* pause ticker on hover */
+  .ticker-track:hover {
+    animation-play-state: paused;
   }
 }

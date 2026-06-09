@@ -458,6 +458,67 @@ def public_notional_history(pod_id: str, minutes: int = 390):
         raise HTTPException(status_code=400, detail=str(getattr(e, "detail", e)))
 
 
+# ── Public market ticker (powers the sliding stock tape) ──────────────────────
+
+TICKER_SYMBOLS = [
+    "NVDA", "AAPL", "MSFT", "TSLA", "AMZN", "GOOGL", "META",
+    "SPY", "QQQ", "AMD", "NFLX", "JPM", "COIN", "INTC", "PLTR",
+]
+
+
+@app.get("/public/ticker")
+def public_ticker(symbols: str = None):
+    """Latest price + daily change for a basket of popular stocks. Public, no auth.
+
+    Market data needs only Alpaca data-API keys; we resolve them via any pod's
+    credentials or the backend env (no pod-specific account is touched).
+    """
+    requested = [s.strip().upper() for s in symbols.split(",")] if symbols else TICKER_SYMBOLS
+    pods = db.sb().table("pods").select("id").limit(1).execute().data or []
+    creds_pod = pods[0]["id"] if pods else "__ticker__"
+    try:
+        snaps = alp.get_snapshots(creds_pod, requested)
+        items = [
+            {"symbol": sym, "price": snaps[sym]["price"], "change_pct": snaps[sym]["change_pct"]}
+            for sym in requested if sym in snaps
+        ]
+    except Exception:
+        items = []
+    return {"items": items}
+
+
+@app.get("/public/trades")
+def public_trades(pod_id: str = None, limit: int = 100):
+    """Public completed-trades feed (order log + pod/trader names). No credentials."""
+    if pod_id and not db.get_pod(pod_id):
+        raise HTTPException(404, "Pod not found.")
+    return {"trades": db.list_public_trades(pod_id=pod_id, limit=limit)}
+
+
+@app.get("/public/leaderboard")
+def public_leaderboard():
+    """Per-pod aggregated standings, marked to live market data. No credentials."""
+    pods = db.sb().table("pods").select("*").order("created_at").execute().data or []
+    rows = []
+    for pod in pods:
+        snap = _live_pod_snapshot(pod)
+        allocated = snap["allocated_capital"] or 0
+        rows.append({
+            "pod_id": pod["id"],
+            "name": pod["name"],
+            "asset_class": pod.get("asset_class"),
+            "account_value": snap["nav"],
+            "allocated_capital": allocated,
+            "total_pnl": snap["total_pnl"],
+            "realized_pnl": snap["realized_pnl"],
+            "unrealized_pnl": snap["unrealized_pnl"],
+            "total_return": snap["total_return"],
+            "live": snap["live"],
+        })
+    rows.sort(key=lambda r: (r["total_return"] is not None, r["total_return"] or 0), reverse=True)
+    return {"pods": rows}
+
+
 # ── Market data (any authenticated trader) ────────────────────────────────────
 
 @app.get("/market/price")

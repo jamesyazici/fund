@@ -79,6 +79,50 @@ def list_trade_activity(trader_id: str = None, pod_id: str = None, limit: int = 
     return rows
 
 
+def list_public_trades(pod_id: str = None, limit: int = 100) -> list[dict]:
+    """Public completed-trades feed: order log joined with pod + trader names.
+
+    Powers the Live sidebar "Completed Trades" tab. Never exposes credentials.
+    """
+    limit = max(1, min(int(limit or 100), 500))
+    q = (
+        sb().table("trades")
+        .select("id, pod_id, trader_id, symbol, side, order_type, instrument_type, "
+                "quantity, price, notional, status, realized_pnl, asset_class, "
+                "executed_at, pods(name), traders(display_name)")
+        .order("executed_at", desc=True)
+        .limit(limit)
+    )
+    if pod_id:
+        q = q.eq("pod_id", pod_id)
+    rows = q.execute().data or []
+    out = []
+    for r in rows:
+        qty = r.get("quantity")
+        price = r.get("price")
+        notional = r.get("notional")
+        if notional is None and qty is not None and price is not None:
+            notional = round(abs(float(qty) * float(price)), 2)
+        out.append({
+            "id": r.get("id"),
+            "pod_id": r.get("pod_id"),
+            "pod_name": (r.get("pods") or {}).get("name"),
+            "trader": (r.get("traders") or {}).get("display_name"),
+            "trader_id": r.get("trader_id"),
+            "symbol": r.get("symbol"),
+            "side": r.get("side"),
+            "instrument_type": r.get("instrument_type") or "equity",
+            "quantity": qty,
+            "price": price,
+            "notional": notional,
+            "type": (r.get("order_type") or "MARKET"),
+            "status": r.get("status") or "filled",
+            "realized_pnl": r.get("realized_pnl"),
+            "executed_at": r.get("executed_at"),
+        })
+    return out
+
+
 def list_pod_trades_for_marking(pod_id: str) -> list[dict]:
     """Trades ordered oldest-first for deriving public mark-to-market positions."""
     try:

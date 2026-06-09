@@ -423,6 +423,34 @@ def get_latest_prices(pod_id: str, symbols: list[str]) -> dict[str, float]:
         return prices
 
 
+def get_snapshots(pod_id: str, symbols: list[str]) -> dict[str, dict]:
+    """Latest price + daily change for a basket of stocks (powers the ticker tape).
+
+    Uses the multi-symbol snapshot endpoint so the whole basket is one request.
+    Returns {symbol: {"price": float, "change_pct": float}}.
+    """
+    if not symbols:
+        return {}
+    upper = [s.upper() for s in symbols]
+    params = urlencode({"symbols": ",".join(upper)})
+    url = f"https://data.alpaca.markets/v2/stocks/snapshots?{params}"
+    data = _get_json(url, _alpaca_headers(pod_id))
+    snapshots = data.get("snapshots", data) if isinstance(data, dict) else {}
+    out: dict[str, dict] = {}
+    for symbol, snap in (snapshots or {}).items():
+        if not isinstance(snap, dict):
+            continue
+        latest = (snap.get("latestTrade") or {}).get("p")
+        if latest is None:
+            latest = (snap.get("dailyBar") or {}).get("c")
+        prev_close = (snap.get("prevDailyBar") or {}).get("c")
+        if latest is None:
+            continue
+        change_pct = ((float(latest) / float(prev_close) - 1) * 100) if prev_close else 0.0
+        out[symbol] = {"price": round(float(latest), 2), "change_pct": round(change_pct, 2)}
+    return out
+
+
 def get_bars(pod_id: str, symbol: str, days: int = 30) -> list:
     dc = data_client(pod_id)
     start = (datetime.now(timezone.utc) - timedelta(days=days))

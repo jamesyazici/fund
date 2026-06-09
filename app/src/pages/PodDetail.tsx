@@ -1,179 +1,128 @@
+import { useMemo } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { usePod } from '@/hooks/usePods'
-import { useMembers } from '@/hooks/useMembers'
-import { useLivePodSnapshot } from '@/hooks/useLiveSnapshots'
-import { PortfolioNotionalChart } from '@/components/PortfolioNotionalChart'
-import { ConsoleTradeFeed } from '@/components/ConsoleTradeFeed'
-import { formatCurrency, formatPct } from '@/lib/formatters'
-import { cn } from '@/lib/cn'
-
-const assetIcons: Record<string, string> = {
-  equities: '▦',
-  options: '◇',
-  fixed_income: '◌',
-  crypto: '◈',
-  fx: '✕',
-  futures: '◆',
-}
-
-function initials(value: string) {
-  return value
-    .split(' ')
-    .map((part) => part[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase()
-}
+import { useFund, usePod } from '@/data/useFund'
+import { PortfolioChart } from '@/components/PortfolioChart'
+import { TradesTable } from '@/components/TradesFeed'
+import { PositionsTable } from '@/components/Positions'
+import { Money, Pct, PodGlyph } from '@/components/ui'
+import { formatCurrency } from '@/lib/formatters'
 
 export function PodDetail() {
-  const { id } = useParams<{ id: string }>()
-  const { data: pod, isLoading, error } = usePod(id ?? '')
-  const { data: live } = useLivePodSnapshot(id ?? '')
-  const { data: members } = useMembers(id ?? '')
+  const { id } = useParams()
+  const pod = usePod(id)
+  const fund = useFund()
 
-  if (isLoading) {
-    return <div className="min-h-screen border border-black bg-white" />
-  }
+  const podTrades = useMemo(
+    () => fund.trades.filter((t) => t.podId === pod?.id).slice(0, 25),
+    [fund.trades, pod?.id],
+  )
 
-  if (error || !pod) {
+  if (!pod) {
     return (
-      <div className="grid min-h-screen place-items-center bg-white font-mono text-sm text-black">
-        <div className="border border-black bg-white p-4">
-          Pod not found. <Link to="/" className="underline">Back to live view</Link>
-        </div>
+      <div className="py-20 text-center">
+        <p className="label">Pod not found</p>
+        <Link to="/pods" className="mt-3 inline-block underline underline-offset-4">← Back to pods</Link>
       </div>
     )
   }
 
-  const leadTrader = members?.find((member) => member.role === 'pm') ?? members?.[0]
-  const traderName = leadTrader?.name ?? 'Student Trader'
-  const positions = live?.positions ?? []
-  const gross = live?.gross_notional ?? 0
-  const nav = live?.nav ?? pod.allocated_capital
-  const totalReturn = live?.total_return ?? null
-  const liveGain = live?.total_pnl ?? live?.live_gain ?? nav - pod.allocated_capital
-  const isPositive = liveGain >= 0
-
   return (
-    <div className="min-h-screen overflow-hidden border border-black bg-white text-black">
-      <div className="grid h-10 grid-cols-[220px_minmax(0,1fr)_360px] items-center border-b border-black bg-white font-mono text-[11px] uppercase tracking-[0.12em] max-lg:grid-cols-[180px_minmax(0,1fr)]">
-        <Link to="/" className="px-5 font-serif text-2xl font-black normal-case tracking-[-0.08em]">
-          RQFC<span className="ml-1 font-mono text-[10px] tracking-normal">by students</span>
-        </Link>
-        <div className="flex justify-center gap-8 font-black">
-          <Link to="/">Live</Link>
-          <span>|</span>
-          <Link to="/leaderboard">Leaderboard</Link>
-          <span>|</span>
-          <Link to="/models">Models</Link>
-          <span>|</span>
-          <Link to="/blog">Blog</Link>
-        </div>
-        <div className="flex justify-end gap-4 px-5 text-[10px] max-lg:hidden">
-          <span>{live?.live ? 'live alpaca marks' : 'snapshot fallback'}</span>
-          <span>read only ↗</span>
-        </div>
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <Link to="/pods" className="text-2xs uppercase tracking-[0.14em] underline underline-offset-4">← All pods</Link>
+        <Link to="/leaderboard" className="text-2xs uppercase tracking-[0.14em] underline underline-offset-4">Leaderboard →</Link>
       </div>
 
-      <div className="grid grid-cols-6 border-b border-black bg-white font-mono text-[11px] max-md:grid-cols-2">
-        {(positions.length ? positions.slice(0, 6) : [{ symbol: pod.benchmark_symbol, current_price: nav, quantity: 1 }]).map((position) => (
-          <div key={position.symbol} className="border-r border-black px-4 py-2 last:border-r-0">
-            <div className="text-[10px] font-black uppercase text-zinc-600">
-              {assetIcons[pod.asset_class] ?? '◌'} {position.symbol}
-            </div>
-            <div className="mt-1 font-black">{formatCurrency(position.current_price)}</div>
+      {/* header */}
+      <header className="card flex flex-col gap-4 px-5 py-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center gap-3">
+          <PodGlyph tint={pod.tint} label={pod.name} size={44} />
+          <div>
+            <h1 className="font-serif text-3xl">{pod.code}: {pod.name}</h1>
+            <p className="text-2xs uppercase tracking-[0.12em] text-faint">{pod.strategy} · {pod.assetClass}</p>
           </div>
-        ))}
+        </div>
+        <div className="text-right">
+          <div className="label">Live Net Worth</div>
+          <div className="text-2xl num">{formatCurrency(pod.accountValue)}</div>
+          <div className="text-sm"><Pct value={pod.totalReturn} /> all-time</div>
+        </div>
+      </header>
+
+      {/* metric strip */}
+      <div className="grid grid-cols-2 gap-px border border-rule bg-rule md:grid-cols-6">
+        <Cell label="Realized P&L"><Money value={pod.realizedPnl} signed /></Cell>
+        <Cell label="Unrealized P&L"><Money value={pod.unrealizedPnl} signed /></Cell>
+        <Cell label="Net P&L"><Money value={pod.totalPnl} signed /></Cell>
+        <Cell label="Cash">{formatCurrency(pod.cash)}</Cell>
+        <Cell label="Fees">{formatCurrency(pod.fees)}</Cell>
+        <Cell label="Allocated">{formatCurrency(pod.allocatedCapital)}</Cell>
+        <Cell label="Sharpe">{pod.sharpe.toFixed(2)}</Cell>
+        <Cell label="Max Drawdown"><span className="neg">{(pod.maxDrawdown * 100).toFixed(1)}%</span></Cell>
+        <Cell label="Win Rate">{(pod.winRate * 100).toFixed(0)}%</Cell>
+        <Cell label="Avg Leverage">{pod.avgLeverage.toFixed(2)}x</Cell>
+        <Cell label="Biggest Win"><span className="pos">+{formatCurrency(pod.biggestWin)}</span></Cell>
+        <Cell label="Biggest Loss"><span className="neg">{formatCurrency(pod.biggestLoss)}</span></Cell>
       </div>
 
-      <div className="grid h-[calc(100vh-7.25rem)] min-h-[680px] grid-cols-[minmax(0,1fr)_400px] max-xl:grid-cols-1 max-xl:h-auto">
-        <main id="portfolio" className="min-h-0">
-          <div className="grid grid-cols-[280px_minmax(0,1fr)_280px] border-b border-black bg-white font-mono text-[11px] max-lg:grid-cols-1">
-            <div className="border-r border-black p-4 max-lg:border-b max-lg:border-r-0">
-              <div className="flex items-center gap-3">
-                <div className="grid h-12 w-12 place-items-center rounded-full border border-black bg-white font-black">
-                  {initials(traderName)}
-                </div>
+      <p className="card-soft px-5 py-3 text-xs leading-relaxed text-ink/90">{pod.description}</p>
+
+      {/* chart (this pod highlighted vs others faintly via single line) */}
+      <div>
+        <h2 className="label-strong mb-2">Account Value</h2>
+        <PortfolioChart pods={fund.pods} visible={[pod.id]} height={300} />
+      </div>
+
+      {/* traders */}
+      <div>
+        <h2 className="label-strong mb-2">Traders</h2>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {pod.traders.map((t) => (
+            <div key={t.id} className="card-soft px-3 py-3">
+              <div className="flex items-center gap-2">
+                <PodGlyph tint={t.tint} label={t.name} size={28} />
                 <div>
-                  <div className="font-black uppercase">{traderName}</div>
-                  <div className="text-zinc-600">Trader</div>
+                  <div className="text-xs font-semibold">{t.name}</div>
+                  <div className="text-2xs text-faint uppercase tracking-[0.1em]">{t.role}</div>
                 </div>
               </div>
-            </div>
-            <div className="p-4 text-center max-lg:border-b max-lg:border-black">
-              <div className="font-black uppercase tracking-[0.2em]">{pod.name}</div>
-              <div className="mt-1 text-zinc-600">{pod.asset_class.replace('_', ' ')} / {pod.benchmark_symbol}</div>
-            </div>
-            <div className="grid grid-cols-2 font-mono">
-              <div className="border-l border-black p-4 max-lg:border-l-0">
-                <div className="text-[10px] font-black uppercase text-zinc-500">Notional</div>
-                <div className="mt-1 font-black">{formatCurrency(gross)}</div>
+              <div className="mt-2 flex items-center justify-between text-2xs">
+                <span className="text-faint uppercase tracking-[0.08em]">Live P&L</span>
+                <Money value={t.livePnl} signed />
               </div>
-              <div className="border-l border-black p-4">
-                <div className="text-[10px] font-black uppercase text-zinc-500">Total P&L</div>
-                <div className={cn('mt-1 font-black', isPositive ? 'text-emerald-700' : 'text-red-700')}>
-                  {formatCurrency(liveGain)}
-                </div>
+              <div className="mt-1 flex items-center justify-between text-2xs">
+                <span className="text-faint uppercase tracking-[0.08em]">Trades</span>
+                <span className="num">{t.trades}</span>
               </div>
             </div>
-          </div>
-
-          <PortfolioNotionalChart podId={pod.id} live={live} />
-
-          <div className="grid grid-cols-5 border-t border-black bg-white font-mono text-[10px] max-lg:grid-cols-2">
-            <div className="border-r border-black p-3">
-              <div className="font-black uppercase text-zinc-500">NAV</div>
-              <div className="mt-1 font-black">{formatCurrency(nav)}</div>
-            </div>
-            <div className="border-r border-black p-3">
-              <div className="font-black uppercase text-zinc-500">Return</div>
-              <div className={cn('mt-1 font-black', (totalReturn ?? 0) >= 0 ? 'text-emerald-700' : 'text-red-700')}>
-                {formatPct(totalReturn)}
-              </div>
-            </div>
-            <div className="border-r border-black p-3">
-              <div className="font-black uppercase text-zinc-500">Realized P&L</div>
-              <div className={cn('mt-1 font-black', (live?.realized_pnl ?? 0) >= 0 ? 'text-emerald-700' : 'text-red-700')}>
-                {formatCurrency(live?.realized_pnl)}
-              </div>
-            </div>
-            <div className="border-r border-black p-3">
-              <div className="font-black uppercase text-zinc-500">Unrealized P&L</div>
-              <div className={cn('mt-1 font-black', (live?.unrealized_pnl ?? 0) >= 0 ? 'text-emerald-700' : 'text-red-700')}>
-                {formatCurrency(live?.unrealized_pnl)}
-              </div>
-            </div>
-            <div className="p-3">
-              <div className="font-black uppercase text-zinc-500">Cash / Positions</div>
-              <div className="mt-1 font-black">{formatCurrency(live?.cash)} / {positions.length}</div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-5 border-t border-black bg-white font-mono text-[10px] max-lg:grid-cols-2">
-            {(positions.length ? positions.slice(0, 5) : [{
-              symbol: 'NO POSITIONS',
-              quantity: 0,
-              avg_entry_price: 0,
-              current_price: 0,
-              multiplier: 1,
-              market_value: 0,
-              unrealized_pnl: 0,
-              total_pnl: 0,
-            }]).map((position) => (
-              <div key={position.symbol} className="border-r border-black p-3 last:border-r-0">
-                <div className="font-black uppercase">{position.symbol}</div>
-                <div className="mt-1">{formatCurrency(position.market_value)}</div>
-                <div className="mt-1">x{position.multiplier ?? 1}</div>
-                <div className={cn('mt-1 font-black', (position.total_pnl ?? position.unrealized_pnl ?? 0) >= 0 ? 'text-emerald-700' : 'text-red-700')}>
-                  {formatCurrency(position.total_pnl ?? position.unrealized_pnl)}
-                </div>
-              </div>
-            ))}
-          </div>
-        </main>
-
-        <ConsoleTradeFeed podId={pod.id} limit={26} positions={positions} />
+          ))}
+        </div>
       </div>
+
+      {/* positions */}
+      <div>
+        <h2 className="label-strong mb-2">Active Positions</h2>
+        <div className="border border-rule">
+          <PositionsTable positions={pod.positions} />
+        </div>
+      </div>
+
+      {/* recent trades */}
+      <div>
+        <h2 className="label-strong mb-2">Recent Trades</h2>
+        <div className="border border-rule">
+          <TradesTable trades={podTrades} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Cell({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-panel px-3 py-2.5">
+      <div className="label">{label}</div>
+      <div className="mt-0.5 text-sm num">{children}</div>
     </div>
   )
 }

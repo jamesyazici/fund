@@ -13,3 +13,7 @@ node_modules/
 dist/
 fund.env
 demo_pic.png
+.claude
+replicate/
+
+.replicate/
