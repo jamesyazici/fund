@@ -59,6 +59,8 @@
   .tag.admin { color:var(--accent); border-color:#3b3f7a; }
   .tag.buy { color:var(--green); border-color:color-mix(in srgb, var(--green) 55%, var(--line)); background:color-mix(in srgb, var(--green) 12%, transparent); }
   .tag.sell { color:var(--red); border-color:color-mix(in srgb, var(--red) 55%, var(--line)); background:color-mix(in srgb, var(--red) 10%, transparent); }
+  td.pos { color:var(--green); font-variant-numeric:tabular-nums; }
+  td.neg { color:var(--red); font-variant-numeric:tabular-nums; }
   .statGrid { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:.8rem; margin-bottom:1rem; }
   .stat { border:1px solid var(--line); border-radius:16px; padding:1rem; background:var(--panel); box-shadow:var(--shadow); }
   .stat .value { font-size:1.65rem; font-weight:900; letter-spacing:-.03em; }
@@ -280,7 +282,7 @@
         <div><label>Limit</label><select id="tradeLimit" onchange="loadTradeActivity()"><option>50</option><option selected>100</option><option>250</option><option>500</option></select></div>
       </div>
       <table id="activityTable"><thead><tr>
-        <th>Time</th><th>Trader</th><th>Pod</th><th>Symbol</th><th>Side</th><th>Qty</th><th>Notional</th><th>Status</th>
+        <th>Time</th><th>Trader</th><th>Pod</th><th>Symbol</th><th>Side</th><th>Type</th><th>Qty</th><th>Price</th><th>Notional</th><th>Realized P&amp;L</th><th>Status</th>
       </tr></thead><tbody></tbody></table>
     </div>
   </section>
@@ -556,7 +558,7 @@ async function loadTradeActivity() {
     const rows = await api('GET', '/admin/trades?' + params.toString());
     if (!rows.length) {
       const tr = document.createElement('tr');
-      tr.innerHTML = '<td class="muted" colspan="8">No trades match this filter.</td>';
+      tr.innerHTML = '<td class="muted" colspan="11">No trades match this filter.</td>';
       tb.appendChild(tr);
       return;
     }
@@ -564,9 +566,16 @@ async function loadTradeActivity() {
       const tr = document.createElement('tr');
       const trader = (r.traders && r.traders.display_name) || 'Unknown';
       const pod = (r.pods && r.pods.name) || r.pod_id;
+      const rpnl = r.realized_pnl;
+      const rpnlCell = (rpnl === null || rpnl === undefined)
+        ? '<td class="muted">—</td>'
+        : `<td class="${Number(rpnl) >= 0 ? 'pos' : 'neg'}">${Number(rpnl) >= 0 ? '+' : ''}${fmt(rpnl)}</td>`;
+      const typeLabel = (r.instrument_type === 'option' ? 'OPT ' : '') + (r.order_type || 'market');
       tr.innerHTML = `<td>${fmtDate(r.executed_at)}</td><td>${trader}</td><td>${pod}</td>
         <td><strong>${r.symbol}</strong></td><td><span class="tag ${r.side}">${r.side}</span></td>
-        <td>${Number(r.quantity || 0).toLocaleString()}</td><td>${fmt(r.computed_notional ?? r.notional)}</td><td class="muted">${r.status || '-'}</td>`;
+        <td class="muted">${typeLabel}</td>
+        <td>${Number(r.quantity || 0).toLocaleString()}</td><td>${r.price != null ? fmt(r.price) : '—'}</td>
+        <td>${fmt(r.computed_notional ?? r.notional)}</td>${rpnlCell}<td class="muted">${r.status || '-'}</td>`;
       tb.appendChild(tr);
     }
   } catch (e) { toast(e.message, 'err'); }

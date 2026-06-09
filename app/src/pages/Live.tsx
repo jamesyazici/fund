@@ -4,7 +4,7 @@ import { useFund } from '@/data/useFund'
 import { PortfolioChart } from '@/components/PortfolioChart'
 import { TradesFeed } from '@/components/TradesFeed'
 import { PositionCard, PositionsSummary } from '@/components/Positions'
-import { Money, Pct, PodGlyph } from '@/components/ui'
+import { Money, NoData, Pct, PodGlyph } from '@/components/ui'
 import { cn } from '@/lib/cn'
 import { formatCurrency } from '@/lib/formatters'
 
@@ -34,6 +34,8 @@ export function Live() {
       totalReturn: allocated ? totalPnl / allocated : 0,
     }
   }, [pods])
+
+  if (pods.length === 0) return <NoData title="The fund is not live yet" />
 
   const headline =
     view === 'all'

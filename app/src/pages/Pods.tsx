@@ -1,11 +1,20 @@
 import { Link } from 'react-router-dom'
 import { useFund } from '@/data/useFund'
 import { PortfolioChart } from '@/components/PortfolioChart'
-import { Money, Pct, PodGlyph } from '@/components/ui'
+import { Money, NoData, Pct, PodGlyph } from '@/components/ui'
 import { formatCurrency } from '@/lib/formatters'
 
 export function Pods() {
   const { pods } = useFund()
+
+  if (pods.length === 0) {
+    return (
+      <div>
+        <h1 className="font-serif text-4xl">Pods</h1>
+        <NoData title="No pods yet" />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-5">

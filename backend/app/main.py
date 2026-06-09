@@ -294,6 +294,8 @@ def _live_pod_snapshot(pod: dict) -> dict:
         "daily_return": None,
         "session_return": None,
         "total_return": None,
+        "members": db.list_pod_members(pod["id"]),
+        "nav_series": db.get_nav_series(pod["id"]),
         "error": None,
     }
     try:

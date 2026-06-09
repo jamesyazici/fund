@@ -59,7 +59,7 @@ def list_trade_activity(trader_id: str = None, pod_id: str = None, limit: int = 
     limit = max(1, min(int(limit or 100), 500))
     q = (
         sb().table("trades")
-        .select("id, pod_id, trader_id, symbol, side, quantity, price, notional, status, asset_class, executed_at, pods(name), traders(display_name)")
+        .select("id, pod_id, trader_id, symbol, side, order_type, instrument_type, quantity, price, notional, realized_pnl, status, asset_class, executed_at, pods(name), traders(display_name)")
         .order("executed_at", desc=True)
         .limit(limit)
     )
@@ -121,6 +121,64 @@ def list_public_trades(pod_id: str = None, limit: int = 100) -> list[dict]:
             "executed_at": r.get("executed_at"),
         })
     return out
+
+
+def list_pod_members(pod_id: str) -> list[dict]:
+    """Public roster for a pod (names + roles only — no credentials)."""
+    try:
+        res = (
+            sb().table("members")
+            .select("id, name, role, is_admin")
+            .eq("pod_id", pod_id)
+            .execute()
+        )
+        return res.data or []
+    except Exception:
+        return []
+
+
+def get_nav_series(pod_id: str, daily_limit: int = 365, mark_limit: int = 1000) -> list[dict]:
+    """Account-value time series for the live chart.
+
+    Combines daily `nav_history` (from /sync) with the intraday `portfolio_marks`
+    that accumulate every time the public live feed is polled. Genuinely live —
+    no synthetic points.
+    """
+    series: list[dict] = []
+    try:
+        daily = (
+            sb().table("nav_history")
+            .select("date, nav")
+            .eq("pod_id", pod_id)
+            .order("date")
+            .limit(daily_limit)
+            .execute()
+            .data
+            or []
+        )
+        for d in daily:
+            if d.get("nav") is not None:
+                series.append({"t": f"{d['date']}T00:00:00Z", "value": float(d["nav"])})
+    except Exception:
+        pass
+    try:
+        marks = (
+            sb().table("portfolio_marks")
+            .select("marked_at, portfolio_value")
+            .eq("pod_id", pod_id)
+            .order("marked_at", desc=True)
+            .limit(mark_limit)
+            .execute()
+            .data
+            or []
+        )
+        for m in reversed(marks):
+            if m.get("portfolio_value") is not None:
+                series.append({"t": m["marked_at"], "value": float(m["portfolio_value"])})
+    except Exception:
+        pass
+    series.sort(key=lambda r: r["t"])
+    return series
 
 
 def list_pod_trades_for_marking(pod_id: str) -> list[dict]:

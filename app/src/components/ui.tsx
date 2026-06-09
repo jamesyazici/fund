@@ -1,6 +1,7 @@
 import { cn } from '@/lib/cn'
 import type { Tint } from '@/data/types'
 import { formatCurrency, formatPct } from '@/lib/formatters'
+import { backendUrl } from '@/lib/backend'
 
 const TINT_BG: Record<Tint, string> = {
   p1: 'bg-p1',
@@ -60,6 +61,28 @@ export function Stat({ label, children, className }: { label: string; children: 
 
 export function SectionTitle({ children, className }: { children: React.ReactNode; className?: string }) {
   return <h2 className={cn('font-serif text-3xl tracking-tight', className)}>{children}</h2>
+}
+
+export function EmptyState({ title, hint }: { title: string; hint?: React.ReactNode }) {
+  return (
+    <div className="card-soft mx-auto my-10 max-w-xl px-6 py-12 text-center">
+      <div className="font-serif text-2xl">{title}</div>
+      {hint && <p className="mt-3 text-xs leading-relaxed text-faint">{hint}</p>}
+    </div>
+  )
+}
+
+const HOW_TO = (
+  <>
+    No live data yet. Create a pod and trader accounts in the{' '}
+    <a href={backendUrl('/portal')} className="underline underline-offset-4">admin portal</a>, attach Alpaca paper
+    credentials, then place trades with the <code className="bg-paper px-1">rqfc</code> package — everything here
+    updates automatically, marked to live market data.
+  </>
+)
+
+export function NoData({ title }: { title: string }) {
+  return <EmptyState title={title} hint={HOW_TO} />
 }
 
 export function SideBadge({ side }: { side: 'long' | 'short' | 'buy' | 'sell' }) {

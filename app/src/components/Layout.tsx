@@ -12,7 +12,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <span>RQFC — Fund Transparency Portal</span>
           <span className="flex items-center gap-2">
             <span className={`inline-block h-1.5 w-1.5 rounded-full ${isLive ? 'bg-gain' : 'bg-faint'}`} />
-            {isLive ? 'Live · marked to market' : 'Demo data · marked to market'}
+            {isLive ? 'Live · marked to market' : 'Awaiting live data'}
           </span>
           <span>Paper-traded · for transparency & education only</span>
         </div>

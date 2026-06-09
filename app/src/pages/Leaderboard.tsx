@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useFund } from '@/data/useFund'
-import { Money, Pct, PodGlyph } from '@/components/ui'
+import { Money, NoData, Pct, PodGlyph } from '@/components/ui'
 import { formatCurrency } from '@/lib/formatters'
 import { cn } from '@/lib/cn'
 
@@ -24,6 +24,15 @@ export function Leaderboard() {
     })
     return arr
   }, [traders, sort])
+
+  if (traders.length === 0) {
+    return (
+      <div>
+        <h1 className="font-serif text-4xl">Leaderboard</h1>
+        <NoData title="No traders yet" />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-5">

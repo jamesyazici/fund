@@ -1,52 +1,55 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { backendUrl } from '@/lib/backend'
-import { buildDemo, demoTicker } from './demo'
-import type { FundData, Pod, Position, TickerItem, Trade } from './types'
+import { maxDrawdownOf, round, sharpeOf } from './compute'
+import type { FundData, NavPoint, Pod, Position, Tint, TickerItem, Trade, Trader } from './types'
 
-// ── live feeds (best-effort; portal falls back to demo data) ──────────
+const TINTS: Tint[] = ['p3', 'p1', 'p5', 'p4', 'p2', 'p6']
+
+// ── raw shapes from the backend public feeds ──────────────────────────
+interface LivePosition {
+  symbol: string
+  quantity: number
+  avg_entry_price: number
+  current_price: number | null
+  market_value: number | null
+  cost_basis?: number | null
+  unrealized_pnl: number | null
+  realized_pnl?: number | null
+  total_pnl?: number | null
+  instrument_type?: string
+}
+interface LiveMember {
+  id: string
+  name: string
+  role: string
+  is_admin: boolean
+}
 interface LiveSnapshot {
   id: string
   name: string
-  accountValue?: number
+  asset_class: string
+  description?: string | null
+  benchmark_symbol?: string | null
+  inception_date?: string | null
+  allocated_capital: number
+  live: boolean
   account?: { portfolio_value?: number; cash?: number } | null
-  nav?: number
+  nav: number
   cash?: number | null
+  gross_notional?: number
+  net_notional?: number
   realized_pnl?: number
   unrealized_pnl?: number
   total_pnl?: number
   fees?: number
-  allocated_capital?: number
-  total_return?: number | null
+  live_gain?: number
   session_return?: number | null
-  live?: boolean
-  positions?: Array<{
-    symbol: string
-    quantity: number
-    avg_entry_price: number
-    current_price: number | null
-    market_value: number | null
-    unrealized_pnl: number | null
-    realized_pnl?: number | null
-    total_pnl?: number | null
-    instrument_type?: string
-  }>
+  total_return?: number | null
+  members?: LiveMember[]
+  nav_series?: { t: string; value: number }[]
+  positions?: LivePosition[]
 }
-
-async function fetchLive(): Promise<LiveSnapshot[] | null> {
-  try {
-    const res = await fetch(backendUrl('/public/live'))
-    if (!res.ok) return null
-    const data = await res.json()
-    const pods = data?.pods
-    if (!Array.isArray(pods) || pods.length === 0) return null
-    if (!pods.some((p: LiveSnapshot) => p.live)) return null
-    return pods
-  } catch {
-    return null
-  }
-}
-
 interface LiveTrade {
   id: string
   pod_id: string
@@ -65,148 +68,214 @@ interface LiveTrade {
   executed_at: string
 }
 
-async function fetchTrades(): Promise<LiveTrade[] | null> {
+async function getJSON<T>(path: string): Promise<T | null> {
   try {
-    const res = await fetch(backendUrl('/public/trades?limit=120'))
+    const res = await fetch(backendUrl(path))
     if (!res.ok) return null
-    const data = await res.json()
-    const trades = data?.trades
-    if (!Array.isArray(trades) || trades.length === 0) return null
-    return trades
+    return (await res.json()) as T
   } catch {
     return null
   }
 }
 
-async function fetchTicker(): Promise<TickerItem[] | null> {
-  try {
-    const res = await fetch(backendUrl('/public/ticker'))
-    if (!res.ok) return null
-    const data = await res.json()
-    const items = data?.items
-    if (!Array.isArray(items) || items.length === 0) return null
-    return items.map((i: { symbol: string; price: number; change_pct: number }) => ({
-      symbol: i.symbol,
-      price: i.price,
-      changePct: i.change_pct,
-    }))
-  } catch {
-    return null
+const fetchLive = () => getJSON<{ pods: LiveSnapshot[] }>('/public/live').then((d) => d?.pods ?? null)
+const fetchTrades = () => getJSON<{ trades: LiveTrade[] }>('/public/trades?limit=200').then((d) => d?.trades ?? null)
+const fetchTicker = () =>
+  getJSON<{ items: { symbol: string; price: number; change_pct: number }[] }>('/public/ticker').then(
+    (d) => d?.items?.map((i) => ({ symbol: i.symbol, price: i.price, changePct: i.change_pct })) ?? null,
+  )
+
+// ── assembly ──────────────────────────────────────────────────────────
+function mapPosition(podId: string, p: LivePosition, idx: number): Position {
+  const side: 'long' | 'short' = p.quantity >= 0 ? 'long' : 'short'
+  const mv = p.market_value ?? 0
+  return {
+    id: `${podId}-pos-${idx}`,
+    podId,
+    symbol: p.symbol,
+    side,
+    instrumentType: p.instrument_type === 'option' ? 'option' : 'equity',
+    quantity: Math.abs(p.quantity),
+    avgEntry: p.avg_entry_price,
+    currentPrice: p.current_price ?? p.avg_entry_price,
+    marketValue: mv,
+    costBasis: p.cost_basis ?? p.avg_entry_price * p.quantity,
+    unrealizedPnl: p.unrealized_pnl ?? 0,
+    realizedPnl: p.realized_pnl ?? 0,
+    totalPnl: p.total_pnl ?? p.unrealized_pnl ?? 0,
+    trader: '',
+    openedAt: new Date().toISOString(),
   }
 }
 
-function mergeLive(base: FundData, live: LiveSnapshot[]): FundData {
-  const byName = new Map(live.map((l) => [l.name.toLowerCase(), l]))
-  const pods: Pod[] = base.pods.map((pod, i) => {
-    const snap = byName.get(pod.name.toLowerCase()) ?? live[i]
-    if (!snap || !snap.live) return pod
-    const accountValue = snap.account?.portfolio_value ?? snap.nav ?? pod.accountValue
-    const allocated = snap.allocated_capital ?? pod.allocatedCapital
-    const positions: Position[] = (snap.positions ?? []).map((p, idx) => {
-      const mv = p.market_value ?? 0
-      return {
-        id: `${pod.id}-live-${idx}`,
-        podId: pod.id,
-        symbol: p.symbol,
-        side: p.quantity >= 0 ? 'long' : 'short',
-        instrumentType: (p.instrument_type as 'equity' | 'option') ?? 'equity',
-        quantity: Math.abs(p.quantity),
-        avgEntry: p.avg_entry_price,
-        currentPrice: p.current_price ?? p.avg_entry_price,
-        marketValue: mv,
-        costBasis: p.avg_entry_price * p.quantity,
-        unrealizedPnl: p.unrealized_pnl ?? 0,
-        realizedPnl: p.realized_pnl ?? 0,
-        totalPnl: p.total_pnl ?? p.unrealized_pnl ?? 0,
-        trader: pod.traders[idx % pod.traders.length]?.name ?? pod.name,
-        openedAt: pod.positions[idx]?.openedAt ?? new Date().toISOString(),
-      }
-    })
-    const usePositions = positions.length ? positions : pod.positions
-    const totalPnl = snap.total_pnl ?? accountValue - allocated
-    const lastNav = pod.nav[pod.nav.length - 1]
-    const nav = [...pod.nav.slice(0, -1), { t: lastNav.t, value: accountValue }]
+function mapTrade(t: LiveTrade, podByName: Map<string, Pod>, podById: Map<string, Pod>): Trade {
+  const pod = podById.get(t.pod_id) ?? (t.pod_name ? podByName.get(t.pod_name.toLowerCase()) : undefined)
+  const qty = Math.abs(t.quantity ?? 0)
+  const price = t.price ?? 0
+  return {
+    id: t.id,
+    podId: t.pod_id,
+    podCode: pod?.code ?? 0,
+    podName: pod?.name ?? t.pod_name ?? '',
+    trader: t.trader ?? '—',
+    traderId: t.trader_id ?? '',
+    symbol: t.symbol,
+    side: t.side === 'sell' ? 'sell' : 'buy',
+    instrumentType: t.instrument_type === 'option' ? 'option' : 'equity',
+    quantity: qty,
+    price,
+    notional: t.notional ?? Math.abs(qty * price),
+    type: (t.type || 'MARKET').toUpperCase(),
+    status: t.status ?? 'filled',
+    realizedPnl: t.realized_pnl ?? null,
+    executedAt: t.executed_at,
+  }
+}
+
+function assemble(
+  snaps: LiveSnapshot[] | null,
+  liveTrades: LiveTrade[] | null,
+  ticker: TickerItem[] | null,
+): FundData {
+  const empty: FundData = {
+    pods: [],
+    traders: [],
+    trades: [],
+    positions: [],
+    ticker: ticker ?? [],
+    isLive: false,
+    asOf: new Date().toISOString(),
+  }
+  if (!snaps || snaps.length === 0) return empty
+
+  // first pass: pods with positions + nav + pod-level metrics
+  const pods: Pod[] = snaps.map((s, i) => {
+    const podId = s.id
+    const allocated = s.allocated_capital || 0
+    const accountValue = s.account?.portfolio_value ?? s.nav ?? allocated
+    const positions = (s.positions ?? []).map((p, idx) => mapPosition(podId, p, idx))
+
+    // nav series from real history; always anchor the latest point to live value
+    const navSeries: NavPoint[] = (s.nav_series ?? []).map((n) => ({ t: n.t, value: n.value }))
+    const nav = navSeries.length ? navSeries : []
+    if (nav.length === 0 || Math.abs(nav[nav.length - 1].value - accountValue) > 0.01) {
+      nav.push({ t: new Date().toISOString(), value: accountValue })
+    }
+
+    const unrealizedPnl = s.unrealized_pnl ?? round(positions.reduce((a, p) => a + p.unrealizedPnl, 0))
+    const realizedPnl = s.realized_pnl ?? 0
+    const totalPnl = s.total_pnl ?? accountValue - allocated
+    const grossLong = positions.filter((p) => p.side === 'long').reduce((a, p) => a + Math.abs(p.marketValue), 0)
+    const grossShort = positions.filter((p) => p.side === 'short').reduce((a, p) => a + Math.abs(p.marketValue), 0)
+
     return {
-      ...pod,
-      accountValue,
+      id: podId,
+      code: i + 1,
+      name: s.name,
+      strategy: s.asset_class,
+      assetClass: s.asset_class,
+      description: s.description ?? '',
+      tint: TINTS[i % TINTS.length],
+      inceptionDate: (s.inception_date ?? nav[0]?.t ?? new Date().toISOString()).slice(0, 10),
       allocatedCapital: allocated,
-      cash: snap.cash ?? snap.account?.cash ?? pod.cash,
-      realizedPnl: snap.realized_pnl ?? pod.realizedPnl,
-      unrealizedPnl: snap.unrealized_pnl ?? pod.unrealizedPnl,
+      accountValue,
+      cash: s.cash ?? s.account?.cash ?? 0,
+      realizedPnl,
+      unrealizedPnl,
       totalPnl,
-      fees: snap.fees ?? pod.fees,
-      totalReturn: snap.total_return ?? totalPnl / (allocated || 1),
-      dayReturn: snap.session_return ?? pod.dayReturn,
-      liveGain: accountValue - allocated,
-      positions: usePositions,
+      fees: s.fees ?? 0,
+      totalReturn: s.total_return ?? (allocated ? totalPnl / allocated : 0),
+      dayReturn: s.session_return ?? 0,
+      liveGain: s.live_gain ?? accountValue - allocated,
+      sharpe: sharpeOf(nav),
+      maxDrawdown: maxDrawdownOf(nav),
+      winRate: 0,
+      biggestWin: 0,
+      biggestLoss: 0,
+      avgLeverage: accountValue ? round((grossLong + grossShort) / accountValue, 2) : 0,
+      longExposure: accountValue ? round(grossLong / accountValue, 3) : 0,
+      shortExposure: accountValue ? round(grossShort / accountValue, 3) : 0,
+      traders: [],
+      positions,
       nav,
     }
   })
-  const positions = pods.flatMap((p) => p.positions)
-  return { ...base, pods, positions, isLive: true, asOf: new Date().toISOString() }
-}
 
-// Map live order-log trades onto the merged pods (matched by pod name).
-function mergeTrades(fund: FundData, live: LiveTrade[]): Trade[] {
-  const byName = new Map(fund.pods.map((p) => [p.name.toLowerCase(), p]))
-  const mapped: Trade[] = live.map((t) => {
-    const pod = (t.pod_name && byName.get(t.pod_name.toLowerCase())) || fund.pods[0]
-    const qty = t.quantity ?? 0
-    const price = t.price ?? 0
-    return {
-      id: t.id,
-      podId: pod?.id ?? t.pod_id,
-      podCode: pod?.code ?? 0,
-      podName: pod?.name ?? t.pod_name ?? '',
-      trader: t.trader ?? pod?.traders[0]?.name ?? 'Trader',
-      traderId: t.trader_id ?? '',
-      symbol: t.symbol,
-      side: t.side === 'sell' ? 'sell' : 'buy',
-      instrumentType: t.instrument_type === 'option' ? 'option' : 'equity',
-      quantity: Math.abs(qty),
-      price,
-      notional: t.notional ?? Math.abs(qty * price),
-      type: (t.type || 'MARKET').toUpperCase(),
-      status: t.status ?? 'filled',
-      realizedPnl: t.realized_pnl ?? null,
-      executedAt: t.executed_at,
-    }
+  const podById = new Map(pods.map((p) => [p.id, p]))
+  const podByName = new Map(pods.map((p) => [p.name.toLowerCase(), p]))
+
+  // trades
+  const trades: Trade[] = (liveTrades ?? [])
+    .map((t) => mapTrade(t, podByName, podById))
+    .sort((a, b) => +new Date(b.executedAt) - +new Date(a.executedAt))
+
+  // attribute trade-based metrics back to pods + build traders from members
+  const traders: Trader[] = []
+  pods.forEach((pod, pi) => {
+    const podTrades = trades.filter((t) => t.podId === pod.id)
+    const realizedAll = podTrades.map((t) => t.realizedPnl).filter((v): v is number => v != null)
+    const wins = realizedAll.filter((v) => v > 0).length
+    pod.winRate = realizedAll.length ? round(wins / realizedAll.length, 3) : 0
+    pod.biggestWin = realizedAll.length ? round(Math.max(0, ...realizedAll)) : 0
+    pod.biggestLoss = realizedAll.length ? round(Math.min(0, ...realizedAll)) : 0
+
+    // attach trader names to positions (round-robin over the pod roster)
+    const roster = snaps[pi].members ?? []
+    pod.positions.forEach((pos, idx) => {
+      pos.trader = roster[idx % Math.max(1, roster.length)]?.name ?? ''
+    })
+
+    roster.forEach((m, mi) => {
+      const mineTrades = podTrades.filter((t) => t.traderId === m.id)
+      const realizedList = mineTrades.map((t) => t.realizedPnl).filter((v): v is number => v != null)
+      const realizedSum = round(realizedList.reduce((a, b) => a + b, 0))
+      const w = realizedList.filter((v) => v > 0).length
+      traders.push({
+        id: m.id,
+        name: m.name,
+        handle: m.name.toLowerCase().replace(/\s+/g, ''),
+        podId: pod.id,
+        podCode: pod.code,
+        role: m.role === 'pm' ? 'pm' : 'trader',
+        tint: TINTS[mi % TINTS.length],
+        livePnl: pod.totalPnl, // a trader's live P&L = their pod's live P&L
+        realizedPnl: realizedSum,
+        unrealizedPnl: 0,
+        biggestWin: realizedList.length ? round(Math.max(0, ...realizedList)) : 0,
+        biggestLoss: realizedList.length ? round(Math.min(0, ...realizedList)) : 0,
+        maxDrawdown: pod.maxDrawdown,
+        winRate: realizedList.length ? round(w / realizedList.length, 3) : 0,
+        trades: mineTrades.length,
+      })
+    })
   })
-  return mapped.sort((a, b) => +new Date(b.executedAt) - +new Date(a.executedAt))
+
+  return {
+    pods,
+    traders,
+    trades,
+    positions: pods.flatMap((p) => p.positions),
+    ticker: ticker ?? [],
+    isLive: true,
+    asOf: new Date().toISOString(),
+  }
 }
 
 export function useFund(): FundData {
-  const base = useMemo(() => buildDemo(), [])
+  const { data: live } = useQuery({ queryKey: ['fund-live'], queryFn: fetchLive, refetchInterval: 5_000, staleTime: 2_000 })
+  const { data: liveTrades } = useQuery({ queryKey: ['fund-trades'], queryFn: fetchTrades, refetchInterval: 8_000, staleTime: 4_000 })
+  const { data: ticker } = useQuery({ queryKey: ['fund-ticker'], queryFn: fetchTicker, refetchInterval: 15_000, staleTime: 10_000 })
 
-  const { data: live } = useQuery({
-    queryKey: ['fund-live'],
-    queryFn: fetchLive,
-    refetchInterval: 5_000,
-    staleTime: 2_000,
-  })
-
-  const { data: liveTrades } = useQuery({
-    queryKey: ['fund-trades'],
-    queryFn: fetchTrades,
-    refetchInterval: 8_000,
-    staleTime: 4_000,
-  })
-
-  const { data: ticker } = useQuery({
-    queryKey: ['fund-ticker'],
-    queryFn: fetchTicker,
-    refetchInterval: 15_000,
-    staleTime: 10_000,
-  })
-
-  return useMemo(() => {
-    const merged = live ? mergeLive(base, live) : base
-    const withTrades = liveTrades ? { ...merged, trades: mergeTrades(merged, liveTrades) } : merged
-    return { ...withTrades, ticker: ticker ?? withTrades.ticker ?? demoTicker() }
-  }, [base, live, liveTrades, ticker])
+  return useMemo(
+    () => assemble(live ?? null, liveTrades ?? null, ticker ?? null),
+    [live, liveTrades, ticker],
+  )
 }
 
 export function usePod(podId: string | undefined): Pod | undefined {
   const fund = useFund()
-  return useMemo(() => fund.pods.find((p) => p.id === podId || String(p.code) === podId), [fund.pods, podId])
+  return useMemo(
+    () => fund.pods.find((p) => p.id === podId || String(p.code) === podId),
+    [fund.pods, podId],
+  )
 }

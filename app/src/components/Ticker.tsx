@@ -4,9 +4,9 @@ import { cn } from '@/lib/cn'
 // Wall-street style sliding stock tape under the navbar.
 export function Ticker() {
   const { ticker } = useFund()
-  const items = ticker.length ? ticker : []
+  if (!ticker.length) return null
   // duplicate the list so the marquee loops seamlessly (-50% translate)
-  const loop = [...items, ...items]
+  const loop = [...ticker, ...ticker]
 
   return (
     <div className="border-y border-rule bg-panel overflow-hidden">
