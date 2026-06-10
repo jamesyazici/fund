@@ -1,7 +1,7 @@
 import { formatDistanceToNow } from 'date-fns'
 import type { Pod, Trade } from '@/data/types'
 import { PodGlyph, SideBadge } from './ui'
-import { formatCurrency } from '@/lib/formatters'
+import { formatCurrency, formatNumber } from '@/lib/formatters'
 import { cn } from '@/lib/cn'
 
 function tintFor(pods: Pod[], trade: Trade) {
@@ -41,7 +41,7 @@ export function TradeCard({ trade, pods }: { trade: Trade; pods: Pod[] }) {
 
       <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-2xs">
         <Row k="Price" v={formatCurrency(trade.price)} />
-        <Row k="Quantity" v={trade.quantity.toLocaleString()} />
+        <Row k="Quantity" v={formatNumber(trade.quantity, 4)} />
         <Row k="Notional" v={formatCurrency(trade.notional)} />
         <Row k="Status" v={trade.status} />
       </dl>
@@ -107,7 +107,7 @@ export function TradesTable({ trades }: { trades: Trade[] }) {
               <td><SideBadge side={t.side} /></td>
               <td className="font-semibold">${t.symbol}</td>
               <td className="text-faint">{t.trader}</td>
-              <td className="text-right">{t.quantity.toLocaleString()}</td>
+              <td className="text-right">{formatNumber(t.quantity, 4)}</td>
               <td className="text-right">{formatCurrency(t.price)}</td>
               <td className="text-right">{formatCurrency(t.notional)}</td>
               <td className={cn('text-right num', t.realizedPnl == null ? 'text-faint' : t.realizedPnl >= 0 ? 'pos' : 'neg')}>

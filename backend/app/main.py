@@ -235,13 +235,27 @@ def place_order(req: OrderRequest, trader: dict = Depends(get_current_trader)):
         raise HTTPException(404, "Pod not found.")
     if not req.qty and not req.notional:
         raise HTTPException(400, "Provide either qty or notional.")
+    if req.qty and req.notional:
+        raise HTTPException(400, "Provide either qty or notional, not both.")
+    if req.notional and req.order_type.lower() != "market":
+        raise HTTPException(400, "Alpaca only supports notional orders for market orders.")
+    if req.notional and req.time_in_force.lower() != "day":
+        raise HTTPException(400, "Alpaca notional orders must use time_in_force='day'.")
+    if req.order_type.lower() == "limit" and not req.qty:
+        raise HTTPException(400, "Limit orders require qty.")
 
     order = alp.submit_order(
         req.pod_id, symbol=req.symbol, side=req.side, qty=req.qty,
         notional=req.notional, order_type=req.order_type,
         limit_price=req.limit_price, time_in_force=req.time_in_force,
     )
-    row = alp.to_trade_row(order, req.order_label, pod["asset_class"])
+    row = alp.to_trade_row(
+        order,
+        req.order_label,
+        pod["asset_class"],
+        requested_qty=req.qty,
+        requested_notional=req.notional,
+    )
     db.log_trade(req.pod_id, trader["id"], row)
     return {"order_id": row["alpaca_order_id"], "status": row["status"], "trade": row}
 

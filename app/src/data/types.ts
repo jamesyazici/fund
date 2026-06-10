@@ -50,9 +50,9 @@ export interface Trade {
   symbol: string
   side: 'buy' | 'sell'
   instrumentType: 'equity' | 'option'
-  quantity: number
-  price: number
-  notional: number // market value of the trade when it took place
+  quantity: number | null
+  price: number | null
+  notional: number | null // market value of the trade when it took place
   type: string // order label (MARKET / LIMIT / ...)
   status: string
   realizedPnl: number | null

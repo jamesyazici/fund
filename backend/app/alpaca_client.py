@@ -8,6 +8,7 @@ storing secrets in the DB.
 This is the ONLY place Alpaca keys are used. They never leave the backend.
 """
 from datetime import datetime, timedelta, timezone
+import time
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 import json
@@ -100,23 +101,48 @@ def submit_order(pod_id: str, *, symbol: str, side: str, qty: float = None,
         req = MarketOrderRequest(symbol=sym, qty=qty, notional=notional,
                                  side=order_side, time_in_force=_tif(time_in_force))
     try:
-        return tc.submit_order(req)
+        order = tc.submit_order(req)
+        return _refresh_order(tc, order)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Alpaca rejected the order: {e}")
 
 
-def to_trade_row(order, order_type_label: str, asset_class: str) -> dict:
+def _refresh_order(tc: TradingClient, order):
+    """Briefly refresh a submitted order so market fills have qty/price when available."""
+    order_id = getattr(order, "id", None)
+    if not order_id:
+        return order
+    for _ in range(3):
+        status = str(getattr(getattr(order, "status", None), "value", getattr(order, "status", ""))).lower()
+        if status in {"filled", "partially_filled", "canceled", "expired", "rejected"}:
+            return order
+        time.sleep(0.35)
+        try:
+            order = tc.get_order_by_id(order_id)
+        except Exception:
+            return order
+    return order
+
+
+def _num(value) -> float | None:
+    if value in (None, ""):
+        return None
+    return float(value)
+
+
+def to_trade_row(order, order_type_label: str, asset_class: str,
+                 requested_qty: float = None, requested_notional: float = None) -> dict:
     """Map an Alpaca order onto the `trades` table columns."""
     instrument = parse_instrument(order.symbol, asset_class)
     multiplier = float(instrument["multiplier"])
-    qty          = float(order.qty) if order.qty else None
-    filled_qty   = float(order.filled_qty) if order.filled_qty else None
-    filled_price = float(order.filled_avg_price) if order.filled_avg_price else None
-    limit_price  = float(order.limit_price) if getattr(order, "limit_price", None) else None
+    qty          = _num(getattr(order, "qty", None)) or requested_qty
+    filled_qty   = _num(getattr(order, "filled_qty", None))
+    filled_price = _num(getattr(order, "filled_avg_price", None))
+    limit_price  = _num(getattr(order, "limit_price", None))
 
     quantity = qty if qty is not None else filled_qty
     price    = filled_price if filled_price is not None else limit_price
-    notional = float(order.notional) if order.notional else (
+    notional = _num(getattr(order, "notional", None)) or requested_notional or (
         round(abs(quantity * price * multiplier), 2) if (quantity is not None and price is not None) else None
     )
     submitted = getattr(order, "submitted_at", None) or getattr(order, "created_at", None)
@@ -201,27 +227,35 @@ def get_fill_activities(pod_id: str, days: int = 90) -> list[dict]:
 def get_positions(pod_id: str) -> list:
     positions = trading_client(pod_id).get_all_positions()
     symbols = [p.symbol for p in positions]
-    latest_prices = get_latest_prices(pod_id, symbols) if symbols else {}
+    try:
+        latest_prices = get_latest_prices(pod_id, symbols) if symbols else {}
+    except Exception:
+        latest_prices = {}
     rows = []
     for p in positions:
-        quantity = float(p.qty)
-        avg_entry = float(p.avg_entry_price)
+        instrument = parse_instrument(p.symbol)
+        multiplier = float(instrument.get("multiplier") or 1)
+        quantity = _num(getattr(p, "qty", None)) or 0.0
+        avg_entry = _num(getattr(p, "avg_entry_price", None)) or 0.0
+        alpaca_current = _num(getattr(p, "current_price", None))
         latest_price = latest_prices.get(p.symbol)
-        current_price = latest_price if latest_price is not None else (
-            float(p.current_price) if p.current_price else None
-        )
-        market_value = (quantity * current_price) if current_price is not None else (
-            float(p.market_value) if p.market_value else None
-        )
-        unrealized_pnl = ((current_price - avg_entry) * quantity) if current_price is not None else (
-            float(p.unrealized_pl) if p.unrealized_pl else None
-        )
+        current_price = alpaca_current if alpaca_current is not None else latest_price
+        market_value = _num(getattr(p, "market_value", None))
+        if market_value is None and current_price is not None:
+            market_value = quantity * current_price * multiplier
+        unrealized_pnl = _num(getattr(p, "unrealized_pl", None))
+        if unrealized_pnl is None and current_price is not None:
+            unrealized_pnl = (current_price - avg_entry) * quantity * multiplier
         rows.append({
             "symbol":          p.symbol,
+            "instrument_type": instrument["instrument_type"],
+            "underlying_symbol": instrument["underlying_symbol"],
             "quantity":        quantity,
             "avg_entry_price": avg_entry,
             "current_price":   round(current_price, 4) if current_price is not None else None,
             "market_value":    round(market_value, 2) if market_value is not None else None,
+            "cost_basis":      _num(getattr(p, "cost_basis", None)),
+            "multiplier":      multiplier,
             "unrealized_pnl":  round(unrealized_pnl, 2) if unrealized_pnl is not None else None,
         })
     return rows

@@ -482,10 +482,14 @@ def log_trade(pod_id, trader_id, trade: dict) -> None:
 
 
 def replace_positions(pod_id, rows: list) -> None:
+    columns = {
+        "symbol", "quantity", "avg_entry_price", "current_price",
+        "market_value", "unrealized_pnl",
+    }
     if rows:
         now = _now()
         sb().table("positions").upsert(
-            [{"pod_id": pod_id, "updated_at": now, **r} for r in rows],
+            [{"pod_id": pod_id, "updated_at": now, **{k: r.get(k) for k in columns}} for r in rows],
             on_conflict="pod_id,symbol",
         ).execute()
     held = [r["symbol"] for r in rows]

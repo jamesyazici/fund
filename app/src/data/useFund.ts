@@ -118,8 +118,9 @@ function mapPosition(podId: string, p: LivePosition, idx: number): Position {
 
 function mapTrade(t: LiveTrade, podByName: Map<string, Pod>, podById: Map<string, Pod>): Trade {
   const pod = podById.get(t.pod_id) ?? (t.pod_name ? podByName.get(t.pod_name.toLowerCase()) : undefined)
-  const qty = Math.abs(t.quantity ?? 0)
-  const price = t.price ?? 0
+  const qty = t.quantity == null ? null : Math.abs(t.quantity)
+  const price = t.price
+  const notional = t.notional ?? (qty != null && price != null ? Math.abs(qty * price) : null)
   return {
     id: t.id,
     podId: t.pod_id,
@@ -132,7 +133,7 @@ function mapTrade(t: LiveTrade, podByName: Map<string, Pod>, podById: Map<string
     instrumentType: t.instrument_type === 'option' ? 'option' : 'equity',
     quantity: qty,
     price,
-    notional: t.notional ?? Math.abs(qty * price),
+    notional,
     type: (t.type || 'MARKET').toUpperCase(),
     status: t.status ?? 'filled',
     realizedPnl: t.realized_pnl ?? null,
