@@ -264,6 +264,8 @@ def place_order(req: OrderRequest, trader: dict = Depends(get_current_trader)):
         notional=req.notional, order_type=req.order_type,
         limit_price=req.limit_price, time_in_force=req.time_in_force,
     )
+    print("here is order")
+    print(order)
     row = alp.to_trade_row(
         order,
         req.order_label,
