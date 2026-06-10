@@ -7,6 +7,7 @@ rqfc API keys, or legacy Supabase JWTs.
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 import json
+import logging
 import secrets
 import time
 
@@ -32,6 +33,7 @@ from .schemas import (
 )
 
 PORTAL_HTML = Path(__file__).parent / "portal" / "index.html"
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="RQFC Trading Backend",
@@ -229,6 +231,19 @@ def list_pods(trader: dict = Depends(get_current_trader)):
 
 @app.post("/orders")
 def place_order(req: OrderRequest, trader: dict = Depends(get_current_trader)):
+    logger.info(
+        "POST /orders received trader_id=%s pod_id=%s symbol=%s side=%s qty=%s notional=%s order_type=%s order_label=%s limit_price=%s time_in_force=%s",
+        trader.get("id"),
+        req.pod_id,
+        req.symbol,
+        req.side,
+        req.qty,
+        req.notional,
+        req.order_type,
+        req.order_label,
+        req.limit_price,
+        req.time_in_force,
+    )
     _require_pod_access(trader, req.pod_id)
     pod = db.get_pod(req.pod_id)
     if not pod:
@@ -256,7 +271,25 @@ def place_order(req: OrderRequest, trader: dict = Depends(get_current_trader)):
         requested_qty=req.qty,
         requested_notional=req.notional,
     )
+    logger.info(
+        "Logging trade row trader_id=%s pod_id=%s alpaca_order_id=%s row=%s",
+        trader.get("id"),
+        req.pod_id,
+        row.get("alpaca_order_id"),
+        row,
+    )
     db.log_trade(req.pod_id, trader["id"], row)
+    logger.info(
+        "Trade row inserted trader_id=%s pod_id=%s alpaca_order_id=%s status=%s quantity=%s price=%s notional=%s filled_qty=%s",
+        trader.get("id"),
+        req.pod_id,
+        row.get("alpaca_order_id"),
+        row.get("status"),
+        row.get("quantity"),
+        row.get("price"),
+        row.get("notional"),
+        row.get("filled_qty"),
+    )
     return {"order_id": row["alpaca_order_id"], "status": row["status"], "trade": row}
 
 

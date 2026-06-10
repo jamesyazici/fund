@@ -8,6 +8,7 @@ storing secrets in the DB.
 This is the ONLY place Alpaca keys are used. They never leave the backend.
 """
 from datetime import datetime, timedelta, timezone
+import logging
 import time
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -30,6 +31,58 @@ from alpaca.data.enums import DataFeed
 from .config import get_settings
 from . import db
 from .accounting import parse_instrument, parse_ts
+
+logger = logging.getLogger(__name__)
+
+
+def _log_value(value):
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if hasattr(value, "value"):
+        return value.value
+    return str(value)
+
+
+def _order_debug(order) -> dict:
+    fields = (
+        "id", "client_order_id", "created_at", "updated_at", "submitted_at",
+        "filled_at", "expired_at", "canceled_at", "failed_at", "replaced_at",
+        "asset_id", "symbol", "asset_class", "side", "order_type", "type",
+        "qty", "notional", "filled_qty", "filled_avg_price", "limit_price",
+        "stop_price", "status", "time_in_force", "extended_hours", "legs",
+    )
+    return {
+        field: _log_value(getattr(order, field, None))
+        for field in fields
+        if getattr(order, field, None) is not None
+    }
+
+
+def _order_request_debug(req) -> dict:
+    if hasattr(req, "model_dump"):
+        data = req.model_dump(exclude_none=True)
+    elif hasattr(req, "dict"):
+        data = req.dict(exclude_none=True)
+    else:
+        data = {k: v for k, v in vars(req).items() if v is not None}
+    return {key: _log_value(value) for key, value in data.items()}
+
+
+def _position_debug(position) -> dict:
+    fields = (
+        "asset_id", "symbol", "exchange", "asset_class", "asset_marginable",
+        "qty", "avg_entry_price", "side", "market_value", "cost_basis",
+        "unrealized_pl", "unrealized_plpc", "unrealized_intraday_pl",
+        "unrealized_intraday_plpc", "current_price", "lastday_price",
+        "change_today", "qty_available",
+    )
+    return {
+        field: _log_value(getattr(position, field, None))
+        for field in fields
+        if getattr(position, field, None) is not None
+    }
 
 
 # ── Credential resolution ────────────────────────────────────────────────────
@@ -101,13 +154,33 @@ def submit_order(pod_id: str, *, symbol: str, side: str, qty: float = None,
         req = MarketOrderRequest(symbol=sym, qty=qty, notional=notional,
                                  side=order_side, time_in_force=_tif(time_in_force))
     try:
+        logger.info(
+            "Submitting Alpaca order pod_id=%s request=%s",
+            pod_id,
+            _order_request_debug(req),
+        )
         order = tc.submit_order(req)
-        return _refresh_order(tc, order)
+        logger.info(
+            "Received Alpaca submit_order response pod_id=%s order=%s",
+            pod_id,
+            _order_debug(order),
+        )
+        refreshed = _refresh_order(tc, order, pod_id=pod_id)
+        logger.info(
+            "Final Alpaca order used for trade log pod_id=%s order=%s",
+            pod_id,
+            _order_debug(refreshed),
+        )
+        return refreshed
     except Exception as e:
+        logger.exception(
+            "Alpaca rejected order pod_id=%s symbol=%s side=%s qty=%s notional=%s order_type=%s time_in_force=%s",
+            pod_id, sym, side, qty, notional, order_type, time_in_force,
+        )
         raise HTTPException(status_code=400, detail=f"Alpaca rejected the order: {e}")
 
 
-def _refresh_order(tc: TradingClient, order):
+def _refresh_order(tc: TradingClient, order, pod_id: str = None):
     """Briefly refresh a submitted order so market fills have qty/price when available."""
     order_id = getattr(order, "id", None)
     if not order_id:
@@ -115,11 +188,29 @@ def _refresh_order(tc: TradingClient, order):
     for _ in range(3):
         status = str(getattr(getattr(order, "status", None), "value", getattr(order, "status", ""))).lower()
         if status in {"filled", "partially_filled", "canceled", "expired", "rejected"}:
+            logger.info(
+                "Alpaca order refresh complete pod_id=%s order_id=%s status=%s",
+                pod_id,
+                order_id,
+                status,
+            )
             return order
         time.sleep(0.35)
         try:
             order = tc.get_order_by_id(order_id)
+            logger.info(
+                "Refreshed Alpaca order pod_id=%s order_id=%s attempt=%s order=%s",
+                pod_id,
+                order_id,
+                _ + 1,
+                _order_debug(order),
+            )
         except Exception:
+            logger.exception(
+                "Failed to refresh Alpaca order pod_id=%s order_id=%s",
+                pod_id,
+                order_id,
+            )
             return order
     return order
 
@@ -148,7 +239,7 @@ def to_trade_row(order, order_type_label: str, asset_class: str,
     submitted = getattr(order, "submitted_at", None) or getattr(order, "created_at", None)
     executed_at = submitted.isoformat() if submitted else datetime.now(timezone.utc).isoformat()
 
-    return {
+    row = {
         "alpaca_order_id": str(order.id),
         "symbol":          order.symbol,
         "side":            order.side.value.lower(),
@@ -169,6 +260,14 @@ def to_trade_row(order, order_type_label: str, asset_class: str,
         "filled_at": filled_at.isoformat() if (filled_at := getattr(order, "filled_at", None)) else None,
         "executed_at":     executed_at,
     }
+    logger.info(
+        "Mapped Alpaca order to trade row order_id=%s requested_qty=%s requested_notional=%s row=%s",
+        row["alpaca_order_id"],
+        requested_qty,
+        requested_notional,
+        row,
+    )
+    return row
 
 
 def cancel_order(pod_id: str, order_id: str) -> None:
@@ -181,7 +280,7 @@ def get_account(pod_id: str) -> dict:
     acct = trading_client(pod_id).get_account()
     last_equity = float(acct.last_equity) if getattr(acct, "last_equity", None) else None
     equity = float(acct.equity)
-    return {
+    row = {
         "equity": equity,
         "cash": float(acct.cash),
         "buying_power": float(acct.buying_power),
@@ -190,6 +289,8 @@ def get_account(pod_id: str) -> dict:
         "session_return": ((equity / last_equity) - 1) if last_equity else None,
         "status": str(acct.status),
     }
+    logger.info("Fetched Alpaca account pod_id=%s account=%s", pod_id, row)
+    return row
 
 
 def get_fill_activities(pod_id: str, days: int = 90) -> list[dict]:
@@ -226,6 +327,11 @@ def get_fill_activities(pod_id: str, days: int = 90) -> list[dict]:
 
 def get_positions(pod_id: str) -> list:
     positions = trading_client(pod_id).get_all_positions()
+    logger.info(
+        "Fetched Alpaca positions pod_id=%s raw_positions=%s",
+        pod_id,
+        [_position_debug(p) for p in positions],
+    )
     symbols = [p.symbol for p in positions]
     try:
         latest_prices = get_latest_prices(pod_id, symbols) if symbols else {}
@@ -258,6 +364,7 @@ def get_positions(pod_id: str) -> list:
             "multiplier":      multiplier,
             "unrealized_pnl":  round(unrealized_pnl, 2) if unrealized_pnl is not None else None,
         })
+    logger.info("Mapped Alpaca positions pod_id=%s rows=%s", pod_id, rows)
     return rows
 
 
