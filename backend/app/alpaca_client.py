@@ -311,6 +311,45 @@ def cancel_order(pod_id: str, order_id: str) -> None:
     trading_client(pod_id).cancel_order_by_id(order_id)
 
 
+def get_orders(pod_id: str, status: str = "open") -> list[dict]:
+    """Fetch orders from Alpaca. status: 'open', 'closed', or 'all'."""
+    from alpaca.trading.requests import GetOrdersRequest
+    from alpaca.trading.enums import QueryOrderStatus
+    status_map = {
+        "open":   QueryOrderStatus.OPEN,
+        "closed": QueryOrderStatus.CLOSED,
+        "all":    QueryOrderStatus.ALL,
+    }
+    req = GetOrdersRequest(status=status_map.get(status, QueryOrderStatus.OPEN), limit=100)
+    orders = trading_client(pod_id).get_orders(req)
+    rows = []
+    for o in orders:
+        qty = _num(getattr(o, "qty", None))
+        filled_qty = _num(getattr(o, "filled_qty", None))
+        filled_price = _num(getattr(o, "filled_avg_price", None))
+        limit_price = _num(getattr(o, "limit_price", None))
+        notional = _num(getattr(o, "notional", None))
+        submitted = getattr(o, "submitted_at", None)
+        filled_at = getattr(o, "filled_at", None)
+        order_type = getattr(o, "order_type", None) or getattr(o, "type", None)
+        rows.append({
+            "order_id":       str(o.id),
+            "symbol":         o.symbol,
+            "side":           o.side.value if hasattr(o.side, "value") else str(o.side),
+            "order_type":     order_type.value if hasattr(order_type, "value") else str(order_type or "market"),
+            "qty":            qty,
+            "notional":       notional,
+            "filled_qty":     filled_qty,
+            "filled_price":   filled_price,
+            "limit_price":    limit_price,
+            "status":         o.status.value if hasattr(o.status, "value") else str(o.status),
+            "time_in_force":  o.time_in_force.value if hasattr(o.time_in_force, "value") else str(o.time_in_force or ""),
+            "submitted_at":   submitted.isoformat() if submitted else None,
+            "filled_at":      filled_at.isoformat() if filled_at else None,
+        })
+    return rows
+
+
 # ── Account, positions, history ──────────────────────────────────────────────
 
 def get_account(pod_id: str) -> dict:

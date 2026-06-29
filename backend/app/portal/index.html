@@ -148,6 +148,7 @@
     <button data-tab="traders" onclick="showTab('traders')">Traders</button>
     <button data-tab="members" onclick="showTab('members')">Assignments</button>
     <button data-tab="activity" onclick="showTab('activity')">Trade Activity</button>
+    <button data-tab="logs" onclick="showTab('logs')">Logs</button>
   </div>
 
   <div class="statGrid">
@@ -199,7 +200,7 @@
         </div>
       </div>
       <table id="podsTable"><thead><tr>
-        <th>Name</th><th>Class</th><th>Capital</th><th>Alpaca</th><th>Actions</th>
+        <th>Name</th><th>Class</th><th>Capital</th><th>Rec. Alloc</th><th>Alpaca</th><th>Actions</th>
       </tr></thead><tbody></tbody></table>
     </div>
   </section>
@@ -286,6 +287,37 @@
       </tr></thead><tbody></tbody></table>
     </div>
   </section>
+
+  <!-- LOGS -->
+  <section id="tab-logs" class="hidden">
+    <div class="panel">
+      <div class="shellHero">
+        <div>
+          <h2>Audit log</h2>
+          <p class="muted">System events — pod lifecycle, access changes, settings, key management.</p>
+        </div>
+        <div class="row">
+          <select id="logFilter" onchange="loadLogs()">
+            <option value="">All events</option>
+            <option value="pod_created">Pod created</option>
+            <option value="pod_deleted">Pod deleted</option>
+            <option value="capital_updated">Capital changes</option>
+            <option value="alpaca_updated">Alpaca credentials</option>
+            <option value="risk_updated">Risk settings</option>
+            <option value="trader_created">Trader created</option>
+            <option value="membership_added">Assignments added</option>
+            <option value="membership_removed">Assignments removed</option>
+            <option value="api_key_created">API keys created</option>
+            <option value="api_key_revoked">API keys revoked</option>
+          </select>
+          <button class="secondary" onclick="loadLogs()">Refresh</button>
+        </div>
+      </div>
+      <table id="logsTable"><thead><tr>
+        <th>Time</th><th>Actor</th><th>Event</th><th>Description</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+  </section>
 </div>
 
 <div id="toast"></div>
@@ -354,11 +386,12 @@ function enterApp() {
 }
 
 function showTab(name) {
-  ['pods','traders','members','activity'].forEach(t => {
+  ['pods','traders','members','activity','logs'].forEach(t => {
     document.getElementById('tab-'+t).classList.toggle('hidden', t !== name);
     document.querySelector(`.tabs button[data-tab="${t}"]`).classList.toggle('active', t === name);
   });
   if (name === 'activity') loadTradeActivity();
+  if (name === 'logs') loadLogs();
 }
 
 async function refreshAll() {
@@ -375,12 +408,17 @@ async function loadPods() {
   document.getElementById('statCapital').textContent = fmt(pods.reduce((sum, p) => sum + Number(p.allocated_capital || 0), 0));
   const tb = document.querySelector('#podsTable tbody'); tb.innerHTML = '';
   for (const p of pods) {
+    const safeName = p.name.replace(/'/g, '');
+    const riskPct = Math.round((p.max_position_pct || 0.20) * 100);
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${p.name}</td><td>${p.asset_class}</td><td>${fmt(p.allocated_capital)}</td>
+      <td class="muted" data-alloc-pod="${p.id}" title="">…</td>
       <td>${p.has_alpaca ? '<span class="tag ok">linked</span>' : '<span class="tag no">fallback</span>'}</td>
       <td class="row">
-        <button class="secondary" onclick="promptAlpaca('${p.id}','${p.name.replace(/'/g,"")}')">Alpaca</button>
-        <button class="secondary" onclick="promptCapital('${p.id}','${p.name.replace(/'/g,"")}',${p.allocated_capital})">Capital</button>
+        <button class="secondary" onclick="promptAlpaca('${p.id}','${safeName}')">Alpaca</button>
+        <button class="secondary" onclick="promptCapital('${p.id}','${safeName}',${p.allocated_capital})">Capital</button>
+        <button class="secondary" onclick="promptRisk('${p.id}','${safeName}',${riskPct})">Risk&nbsp;${riskPct}%</button>
+        <button class="danger" onclick="deletePod('${p.id}','${safeName}')">Delete</button>
       </td>`;
     tb.appendChild(tr);
   }
@@ -389,6 +427,8 @@ async function loadPods() {
   document.getElementById('mPod').innerHTML = opts;
   document.getElementById('mFilter').innerHTML = '<option value="">All pods</option>' + opts;
   document.getElementById('tradePod').innerHTML = '<option value="">All pods</option>' + opts;
+  // Lazy-load allocation recommendations without blocking
+  loadAllocation();
 }
 
 async function createPod() {
@@ -624,6 +664,78 @@ async function initGoogleSignIn() {
     document.getElementById('loginHint').textContent = 'Could not initialize Google sign-in.';
     toast(e.message, 'err');
   }
+}
+
+async function deletePod(podId, name) {
+  if (!confirm(`Delete pod "${name}"?\n\nThis permanently removes the pod, all its trade history, NAV data, and member assignments. This cannot be undone.`)) return;
+  try {
+    await api('DELETE', `/admin/pods/${podId}`);
+    toast(`Pod "${name}" deleted`);
+    loadPods();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function promptRisk(podId, name, currentPct) {
+  const input = prompt(`Max position size for "${name}" (% of portfolio):\n\nDefault is 20. Traders exceeding this limit will be blocked unless they pass override_risk=True.`, currentPct);
+  if (input === null) return;
+  const pct = Number(input);
+  if (isNaN(pct) || pct <= 0 || pct > 100) return toast('Enter a number between 1 and 100', 'err');
+  try {
+    await api('PATCH', `/admin/pods/${podId}/risk`, { max_position_pct: pct / 100 });
+    toast(`Risk limit for "${name}" set to ${pct}%`);
+    loadPods();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function loadAllocation() {
+  let recs = {};
+  try {
+    recs = await api('GET', '/admin/allocation-recommendations');
+  } catch (e) {
+    console.warn('Allocation recommendations failed:', e.message);
+    document.querySelectorAll('[data-alloc-pod]').forEach(cell => {
+      cell.textContent = 'err'; cell.className = 'muted'; cell.title = e.message;
+    });
+    return;
+  }
+  document.querySelectorAll('[data-alloc-pod]').forEach(cell => {
+    const m = recs[cell.dataset.allocPod];
+    if (!m) { cell.textContent = '—'; cell.className = 'muted'; cell.title = 'No data'; return; }
+    if (m.pct > 0) {
+      cell.textContent = m.pct.toFixed(1) + '%';
+      cell.className = '';
+      cell.title = m.reason || '';
+    } else {
+      cell.textContent = '0%';
+      cell.className = 'muted';
+      cell.title = m.reason || 'Not recommended';
+    }
+  });
+}
+
+async function loadLogs() {
+  const filter = document.getElementById('logFilter')?.value || '';
+  const params = filter ? `?action=${filter}` : '';
+  const tb = document.querySelector('#logsTable tbody');
+  if (!tb) return;
+  tb.innerHTML = '';
+  try {
+    const rows = await api('GET', '/admin/logs' + params);
+    if (!rows.length) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td class="muted" colspan="4">No log entries.</td>';
+      tb.appendChild(tr);
+      return;
+    }
+    for (const r of rows) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td style="white-space:nowrap">${fmtDate(r.created_at)}</td>
+        <td class="muted" style="white-space:nowrap">${r.actor || '—'}</td>
+        <td><span class="tag">${r.action}</span></td>
+        <td>${r.description}</td>`;
+      tb.appendChild(tr);
+    }
+  } catch (e) { toast(e.message, 'err'); }
 }
 
 // boot

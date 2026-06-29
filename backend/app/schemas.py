@@ -13,6 +13,7 @@ class OrderRequest(BaseModel):
     order_label: str = "market"
     limit_price: Optional[float] = None
     time_in_force: Literal["day", "gtc", "ioc", "fok", "opg", "cls"] = "day"
+    override_risk: bool = False
 
     @field_validator("symbol")
     @classmethod
@@ -82,3 +83,14 @@ class CreateTraderRequest(BaseModel):
 
 class CreateTraderApiKeyRequest(BaseModel):
     name: str = "default"
+
+
+class PodRiskRequest(BaseModel):
+    max_position_pct: float
+
+    @field_validator("max_position_pct")
+    @classmethod
+    def must_be_valid_pct(cls, v: float) -> float:
+        if not (0 < v <= 1):
+            raise ValueError("max_position_pct must be between 0 and 1 (e.g. 0.20 for 20%)")
+        return v

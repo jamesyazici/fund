@@ -32,6 +32,7 @@ from .schemas import (
     OrderRequest, CancelRequest, CreatePodRequest,
     SetAlpacaRequest, CapitalRequest, MembershipRequest,
     PortalLogin, TraderLogin, CreateTraderRequest, CreateTraderApiKeyRequest,
+    PodRiskRequest,
 )
 
 PORTAL_HTML = Path(__file__).parent / "portal" / "index.html"
@@ -261,6 +262,39 @@ def place_order(req: OrderRequest, trader: dict = Depends(get_current_trader)):
     if req.order_type.lower() == "limit" and not req.qty:
         raise HTTPException(400, "Limit orders require qty.")
 
+    # ── Risk engine: max position size check ─────────────────────────────────
+    max_pct = pod.get("max_position_pct")
+    if max_pct and not req.override_risk and req.side == "buy":
+        try:
+            account = alp.get_account(req.pod_id)
+            equity = float(account.get("equity") or 0)
+            if equity > 0:
+                positions = alp.get_positions(req.pod_id)
+                existing_value = next(
+                    (float(p.get("market_value") or 0)
+                     for p in positions
+                     if p.get("symbol", "").upper() == req.symbol),
+                    0.0,
+                )
+                if req.notional:
+                    incoming = float(req.notional)
+                else:
+                    try:
+                        incoming = float(req.qty) * alp.get_price(req.pod_id, req.symbol)
+                    except Exception:
+                        incoming = 0.0
+                pct_after = (existing_value + incoming) / equity
+                if pct_after > max_pct:
+                    raise HTTPException(
+                        422,
+                        f"Risk limit: {req.symbol} would be {pct_after*100:.1f}% of portfolio "
+                        f"(limit {max_pct*100:.0f}%). Pass override_risk=True to bypass.",
+                    )
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # risk check failure never blocks a trade
+
     order = alp.submit_order(
         req.pod_id, symbol=req.symbol, side=req.side, qty=req.qty,
         notional=req.notional, order_type=req.order_type,
@@ -304,16 +338,69 @@ def cancel_order(req: CancelRequest, trader: dict = Depends(get_current_trader))
 
 # ── Pod live data ─────────────────────────────────────────────────────────────
 
+def _simple_sharpe(returns: list[float], rf: float = 0.05) -> float | None:
+    n = len(returns)
+    if n < 2:
+        return None
+    mean = sum(returns) / n
+    variance = sum((r - mean) ** 2 for r in returns) / (n - 1)
+    std = variance ** 0.5
+    if std == 0:
+        return None
+    return round(((mean - rf / 252) / std) * (252 ** 0.5), 4)
+
+
 @app.get("/pods/{pod_id}/account")
 def pod_account(pod_id: str, trader: dict = Depends(get_current_trader)):
     _require_pod_access(trader, pod_id)
-    return alp.get_account(pod_id)
+    account = alp.get_account(pod_id)
+    try:
+        nav_rows = alp.get_nav_history(pod_id, days=30)
+        recent = nav_rows[-6:] if len(nav_rows) >= 6 else nav_rows
+        daily_returns = [r["daily_return"] for r in recent if r.get("daily_return") is not None]
+        account["recent_days"] = [
+            {"date": r["date"], "nav": r["nav"], "daily_return": r.get("daily_return")}
+            for r in recent[-5:]
+        ]
+        account["return_5d"] = (
+            round(recent[-1]["nav"] / recent[0]["nav"] - 1, 6)
+            if len(recent) >= 2 and recent[0]["nav"] else None
+        )
+        account["sharpe_30d"] = _simple_sharpe(daily_returns)
+    except Exception:
+        account["recent_days"] = []
+        account["return_5d"] = None
+        account["sharpe_30d"] = None
+    return account
 
 
 @app.get("/pods/{pod_id}/positions")
 def pod_positions(pod_id: str, trader: dict = Depends(get_current_trader)):
     _require_pod_access(trader, pod_id)
     return alp.get_positions(pod_id)
+
+
+@app.get("/pods/{pod_id}/orders")
+def pod_orders(pod_id: str, status: str = "open", trader: dict = Depends(get_current_trader)):
+    """Live orders from Alpaca. status: open | closed | all"""
+    _require_pod_access(trader, pod_id)
+    if status not in {"open", "closed", "all"}:
+        raise HTTPException(400, "status must be 'open', 'closed', or 'all'.")
+    return alp.get_orders(pod_id, status=status)
+
+
+@app.get("/pods/{pod_id}/trades")
+def pod_trade_history(
+    pod_id: str,
+    limit: int = 100,
+    trader_only: bool = False,
+    trader: dict = Depends(get_current_trader),
+):
+    """Completed trade history for a pod, optionally filtered to the calling trader."""
+    _require_pod_access(trader, pod_id)
+    limit = max(1, min(int(limit or 100), 500))
+    trader_id = trader["id"] if trader_only else None
+    return db.list_pod_trade_history(pod_id, trader_id=trader_id, limit=limit)
 
 
 # ── Public transparency data ─────────────────────────────────────────────────
@@ -724,6 +811,81 @@ def admin_list_pods(actor: dict = Depends(get_admin_actor)):
     return db.list_pods_admin()
 
 
+@app.delete("/admin/pods/{pod_id}")
+def admin_delete_pod(pod_id: str, actor: dict = Depends(get_admin_actor)):
+    pod = db.get_pod(pod_id)
+    if not pod:
+        raise HTTPException(404, "Pod not found.")
+    pod_name = pod.get("name", pod_id)
+    db.delete_pod(pod_id)
+    db.write_audit_log("pod_deleted", f"Pod '{pod_name}' permanently deleted",
+                       actor=actor.get("email"), pod_id=None)
+    return {"ok": True}
+
+
+@app.get("/admin/allocation-recommendations")
+def allocation_recommendations(actor: dict = Depends(get_admin_actor)):
+    """Compute inverse-vol + Sharpe + drawdown weighted allocation for each pod."""
+    pods = db.list_pods_admin()
+    metrics: dict = {}
+
+    for pod in pods:
+        pid = pod["id"]
+        try:
+            rows = db.get_nav_history_for_allocation(pid, days=35)
+            navs = [float(r["nav"]) for r in rows if r.get("nav") is not None and float(r["nav"]) > 0]
+            if len(navs) < 5:
+                metrics[pid] = {"pct": 0, "nav_days": len(navs),
+                                "reason": f"Insufficient history ({len(navs)} days < 5 required)"}
+                continue
+            rets = [(navs[i] / navs[i - 1]) - 1 for i in range(1, len(navs))]
+            n = len(rets)
+            mean_r = sum(rets) / n
+            var = sum((r - mean_r) ** 2 for r in rets) / (n - 1) if n > 1 else 0
+            vol = var ** 0.5
+            ann_vol = vol * (252 ** 0.5)
+            rf_d = 0.05 / 252
+            sharpe = ((mean_r - rf_d) / vol * (252 ** 0.5)) if vol > 0 else 0.0
+            peak = navs[0]
+            max_dd = 0.0
+            for nav in navs:
+                peak = max(peak, nav)
+                max_dd = max(max_dd, (peak - nav) / peak)
+            metrics[pid] = {
+                "sharpe": round(sharpe, 4),
+                "vol": round(ann_vol, 4),
+                "dd": round(max_dd, 4),
+                "nav_days": len(navs),
+            }
+        except Exception:
+            metrics[pid] = {"pct": 0, "nav_days": 0, "reason": "Error computing metrics"}
+
+    def _raw(m):
+        s, v, d = m.get("sharpe", 0), m.get("vol", 0), m.get("dd", 0)
+        if s is None or s <= 0 or not v:
+            return 0.0
+        return (s / v) * (1 - d)
+
+    scores = {pid: _raw(m) for pid, m in metrics.items()}
+    total = sum(scores.values())
+    for pid, m in metrics.items():
+        m["pct"] = round(scores[pid] / total * 100, 1) if total > 0 else 0
+        if m.get("sharpe") is None:
+            m["reason"] = "Insufficient history"
+        elif m.get("sharpe", 0) <= 0:
+            m["reason"] = f"Negative Sharpe ({m.get('sharpe', 0):.2f}) — 0% recommended"
+        else:
+            m["reason"] = (f"Sharpe {m['sharpe']:.2f} · vol {m['vol']*100:.1f}% "
+                           f"· max drawdown {m['dd']*100:.1f}%")
+    return metrics
+
+
+@app.get("/admin/logs")
+def admin_list_logs(limit: int = 200, action: str = None,
+                    actor: dict = Depends(get_admin_actor)):
+    return db.list_audit_logs(limit=limit, action_filter=action)
+
+
 @app.post("/admin/pods")
 def admin_create_pod(req: CreatePodRequest, actor: dict = Depends(get_admin_actor)):
     pod = db.create_pod(
@@ -735,17 +897,36 @@ def admin_create_pod(req: CreatePodRequest, actor: dict = Depends(get_admin_acto
                           api_key=req.alpaca_api_key, api_secret=req.alpaca_api_secret)
     if req.allocated_capital:
         db.log_capital_allocation(pod["id"], req.allocated_capital, None, actor.get("id"), "initial")
+    db.write_audit_log("pod_created",
+                       f"Pod '{req.name}' ({req.asset_class}) created with ${req.allocated_capital:,.0f} capital",
+                       actor=actor.get("email"), pod_id=pod["id"])
     return pod
 
 
 @app.post("/admin/pods/{pod_id}/alpaca")
 def admin_set_alpaca(pod_id: str, req: SetAlpacaRequest, actor: dict = Depends(get_admin_actor)):
-    if not db.get_pod(pod_id):
+    pod = db.get_pod(pod_id)
+    if not pod:
         raise HTTPException(404, "Pod not found.")
     db.set_pod_alpaca(pod_id, alpaca_account_id=req.alpaca_account_id,
                       api_key=req.alpaca_api_key, api_secret=req.alpaca_api_secret)
     invalidate_pod_creds_cache(pod_id)
+    db.write_audit_log("alpaca_updated",
+                       f"Alpaca credentials updated for pod '{pod['name']}'",
+                       actor=actor.get("email"), pod_id=pod_id)
     return {"ok": True}
+
+
+@app.patch("/admin/pods/{pod_id}/risk")
+def admin_set_pod_risk(pod_id: str, req: PodRiskRequest, actor: dict = Depends(get_admin_actor)):
+    pod = db.get_pod(pod_id)
+    if not pod:
+        raise HTTPException(404, "Pod not found.")
+    db.update_pod_risk(pod_id, req.max_position_pct)
+    db.write_audit_log("risk_updated",
+                       f"Max position size for pod '{pod['name']}' set to {req.max_position_pct*100:.0f}%",
+                       actor=actor.get("email"), pod_id=pod_id)
+    return {"ok": True, "max_position_pct": req.max_position_pct}
 
 
 @app.post("/admin/pods/{pod_id}/capital")
@@ -756,6 +937,9 @@ def admin_allocate_capital(pod_id: str, req: CapitalRequest, actor: dict = Depen
     previous = pod.get("allocated_capital")
     db.set_allocated_capital(pod_id, req.amount)
     db.log_capital_allocation(pod_id, req.amount, previous, actor.get("id"), req.note)
+    db.write_audit_log("capital_updated",
+                       f"Capital for pod '{pod['name']}' changed from ${previous or 0:,.0f} to ${req.amount:,.0f}",
+                       actor=actor.get("email"), pod_id=pod_id)
     # NOTE: with the Trading API, Alpaca's paper balance is reset in the
     # dashboard, not via API. Broker API enables true programmatic funding here.
     return {"pod_id": pod_id, "allocated_capital": req.amount, "previous": previous}
@@ -784,6 +968,10 @@ def admin_create_trader(req: CreateTraderRequest, actor: dict = Depends(get_admi
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Could not create login: {e}")
     trader = db.create_trader(req.display_name, req.is_admin, auth_user_id)
+    role_label = "admin" if req.is_admin else "trader"
+    db.write_audit_log("trader_created",
+                       f"{role_label.title()} '{req.display_name}' ({req.email}) account created",
+                       actor=actor.get("email"), trader_id=trader["id"])
     return {"trader_id": trader["id"], "display_name": trader["display_name"],
             "is_admin": trader["is_admin"], "email": req.email}
 
@@ -814,6 +1002,11 @@ def admin_create_trader_api_key(
         key_prefix=api_key_prefix(plaintext),
         key_hash=hash_api_key(plaintext),
     )
+    trader_row = db.get_trader_by_id(trader_id)
+    trader_name = (trader_row or {}).get("display_name", trader_id)
+    db.write_audit_log("api_key_created",
+                       f"API key '{name}' created for trader '{trader_name}'",
+                       actor=actor.get("email"), trader_id=trader_id)
     return {
         "id": row["id"],
         "trader_id": row["trader_id"],
@@ -828,6 +1021,8 @@ def admin_create_trader_api_key(
 def admin_revoke_trader_api_key(key_id: str, actor: dict = Depends(get_admin_actor)):
     if not db.revoke_trader_api_key(key_id):
         raise HTTPException(404, "Active API key not found.")
+    db.write_audit_log("api_key_revoked", f"API key {key_id[:8]}… revoked",
+                       actor=actor.get("email"))
     return {"ok": True}
 
 
@@ -839,10 +1034,24 @@ def admin_list_memberships(pod_id: str = None, actor: dict = Depends(get_admin_a
 @app.post("/admin/memberships")
 def admin_add_membership(req: MembershipRequest, actor: dict = Depends(get_admin_actor)):
     db.add_membership(req.pod_id, req.trader_id, req.role)
+    pod = db.get_pod(req.pod_id)
+    trader = db.get_trader_by_id(req.trader_id)
+    pod_name = (pod or {}).get("name", req.pod_id)
+    trader_name = (trader or {}).get("display_name", req.trader_id)
+    db.write_audit_log("membership_added",
+                       f"Trader '{trader_name}' assigned to pod '{pod_name}' as {req.role}",
+                       actor=actor.get("email"), pod_id=req.pod_id, trader_id=req.trader_id)
     return {"ok": True}
 
 
 @app.delete("/admin/memberships")
 def admin_remove_membership(req: MembershipRequest, actor: dict = Depends(get_admin_actor)):
+    pod = db.get_pod(req.pod_id)
+    trader = db.get_trader_by_id(req.trader_id)
+    pod_name = (pod or {}).get("name", req.pod_id)
+    trader_name = (trader or {}).get("display_name", req.trader_id)
     db.remove_membership(req.pod_id, req.trader_id)
+    db.write_audit_log("membership_removed",
+                       f"Trader '{trader_name}' removed from pod '{pod_name}'",
+                       actor=actor.get("email"), pod_id=req.pod_id, trader_id=req.trader_id)
     return {"ok": True}

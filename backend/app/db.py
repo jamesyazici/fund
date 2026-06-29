@@ -466,6 +466,69 @@ def set_allocated_capital(pod_id, amount) -> None:
     sb().table("pods").update({"allocated_capital": amount}).eq("id", pod_id).execute()
 
 
+def update_pod_risk(pod_id: str, max_position_pct: float) -> None:
+    sb().table("pods").update({"max_position_pct": max_position_pct}).eq("id", pod_id).execute()
+
+
+def delete_pod(pod_id: str) -> None:
+    """Permanently delete a pod and all related data."""
+    for table in ("pod_memberships", "pod_alpaca_credentials", "portfolio_marks",
+                  "nav_history", "metrics", "capital_allocations", "trades"):
+        try:
+            sb().table(table).delete().eq("pod_id", pod_id).execute()
+        except Exception:
+            pass
+    sb().table("pods").delete().eq("id", pod_id).execute()
+
+
+def write_audit_log(action: str, description: str, *,
+                    actor: str = None, pod_id: str = None,
+                    trader_id: str = None, metadata: dict = None) -> None:
+    """Fire-and-forget audit log write. Never raises."""
+    try:
+        row = {"action": action, "description": description}
+        if actor:
+            row["actor"] = actor
+        if pod_id:
+            row["pod_id"] = pod_id
+        if trader_id:
+            row["trader_id"] = trader_id
+        if metadata:
+            row["metadata"] = metadata
+        sb().table("audit_logs").insert(row).execute()
+    except Exception:
+        pass
+
+
+def list_audit_logs(limit: int = 200, action_filter: str = None) -> list:
+    try:
+        q = (
+            sb().table("audit_logs")
+            .select("id, created_at, actor, action, description, pod_id, trader_id")
+            .order("created_at", desc=True)
+            .limit(limit)
+        )
+        if action_filter:
+            q = q.eq("action", action_filter)
+        return q.execute().data or []
+    except Exception:
+        return []
+
+
+def get_nav_history_for_allocation(pod_id: str, days: int = 35) -> list:
+    """Returns sorted daily NAV rows for the allocation recommendation engine."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
+    res = (
+        sb().table("nav_history")
+        .select("date, nav")
+        .eq("pod_id", pod_id)
+        .gte("date", cutoff)
+        .order("date")
+        .execute()
+    )
+    return res.data or []
+
+
 def log_capital_allocation(pod_id, new_capital, previous_capital, allocated_by, note=None) -> None:
     sb().table("capital_allocations").insert({
         "pod_id": pod_id,
@@ -526,3 +589,24 @@ def upsert_metrics(pod_id, row: dict) -> None:
 
 def count_trades(pod_id) -> int:
     return sb().table("trades").select("id", count="exact").eq("pod_id", pod_id).execute().count or 0
+
+
+def list_pod_trade_history(pod_id: str, trader_id: str = None, limit: int = 100) -> list[dict]:
+    """Authenticated trade history for a pod, optionally filtered to one trader."""
+    limit = max(1, min(int(limit or 100), 500))
+    q = (
+        sb().table("trades")
+        .select("id, pod_id, trader_id, symbol, side, order_type, quantity, price, "
+                "notional, filled_qty, status, asset_class, instrument_type, "
+                "realized_pnl, fees, executed_at, filled_at, traders(display_name), pods(name)")
+        .eq("pod_id", pod_id)
+        .order("executed_at", desc=True)
+        .limit(limit)
+    )
+    if trader_id:
+        q = q.eq("trader_id", trader_id)
+    rows = q.execute().data or []
+    for r in rows:
+        r["trader_name"] = (r.pop("traders", None) or {}).get("display_name")
+        r["pod_name"] = (r.pop("pods", None) or {}).get("name")
+    return rows

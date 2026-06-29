@@ -47,9 +47,58 @@ def configure(backend_url: str = None) -> Session:
     return _session
 
 
+def _print_login_summary(sess: Session, pods: list) -> None:
+    """Print a compact per-pod dashboard after login."""
+    if not pods:
+        return
+
+    def pct(v):
+        if v is None:
+            return "    —"
+        sign = "+" if v >= 0 else ""
+        return f"{sign}{v * 100:.2f}%"
+
+    for membership in pods:
+        pod_info = membership.get("pods", {})
+        pod_id   = membership.get("pod_id")
+        pod_name = pod_info.get("name", "?")
+        if not pod_id:
+            continue
+
+        try:
+            a = sess.get(f"/pods/{pod_id}/account")
+            if not a:
+                continue
+
+            pv     = a.get("portfolio_value") or 0
+            cash   = a.get("cash") or 0
+            bp     = a.get("buying_power") or 0
+            day_r  = a.get("session_return")
+            r5d    = a.get("return_5d")
+            sharpe = a.get("sharpe_30d")
+
+            width = max(len(pod_name) + 2, 36)
+            bar   = "─" * width
+
+            print(f"\n  {pod_name}")
+            print(f"  {bar}")
+            print(f"  {'Portfolio Value':<20} ${pv:>12,.2f}")
+            print(f"  {'Cash':<20} ${cash:>12,.2f}")
+            print(f"  {'Buying Power':<20} ${bp:>12,.2f}")
+            print(f"  {'Day Return':<20} {pct(day_r):>13}")
+            print(f"  {'5-Day Return':<20} {pct(r5d):>13}")
+            if sharpe is not None:
+                print(f"  {'Sharpe (30d)':<20} {sharpe:>13.4f}")
+        except Exception:
+            continue
+
+
 def login(email: str = None, password: str = None, *, api_key: str = None,
-          backend_url: str = None) -> dict:
-    """Authenticate and start a session. Returns your profile."""
+          backend_url: str = None, summary: bool = True) -> dict:
+    """Authenticate and start a session. Returns your profile.
+
+    Pass summary=False to skip the post-login dashboard.
+    """
     global _session
     if backend_url is not None or _session is None:
         sess = configure(backend_url)
@@ -59,22 +108,20 @@ def login(email: str = None, password: str = None, *, api_key: str = None,
         if email or password:
             raise ValueError("Use either email/password or api_key, not both.")
         sess.use_api_key(api_key)
+        me = sess.get("/me")
     else:
         if not email or not password:
             raise ValueError("Call rqfc.login(email, password) or rqfc.login(api_key='rqfc_...').")
-        profile = sess.login(email, password)
-        if profile:
-            me = profile
-            tag = " (admin)" if me.get("is_admin") else ""
-            print(
-                f"Logged in as {me['display_name']}{tag}. "
-                f"Pods: {[p['pods']['name'] for p in me.get('pods', [])] or 'none assigned'}"
-            )
-            return me
+        me = sess.login(email, password) or sess.get("/me")
 
-    me = sess.get("/me")
-    tag = " (admin)" if me.get("is_admin") else ""
-    print(f"Logged in as {me['display_name']}{tag}. Pods: {[p['pods']['name'] for p in me['pods']] or 'none assigned'}")
+    tag  = " (admin)" if me.get("is_admin") else ""
+    pods = me.get("pods", [])
+    pod_names = [p["pods"]["name"] for p in pods] or "none assigned"
+    print(f"Logged in as {me['display_name']}{tag}.  Pods: {pod_names}")
+
+    if summary and not me.get("is_admin"):
+        _print_login_summary(sess, pods)
+
     return me
 
 
