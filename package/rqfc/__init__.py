@@ -30,7 +30,7 @@ from .client import Account
 from .admin import Admin
 
 __version__ = "1.0.0"
-DEFAULT_BACKEND_URL = "fund-production-3f88.up.railway.app"
+DEFAULT_BACKEND_URL = "https://fund-production-3f88.up.railway.app"
 
 _session: Session | None = None
 
