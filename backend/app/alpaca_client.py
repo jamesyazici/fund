@@ -742,3 +742,36 @@ def get_bars(pod_id: str, symbol: str, days: int = 30) -> list:
         "open": float(b.open), "high": float(b.high),
         "low": float(b.low), "close": float(b.close), "volume": float(b.volume),
     } for b in bars]
+
+
+def get_bulk_bars(pod_id: str, symbols: list, start: str, end: str) -> dict:
+    """Fetch daily OHLCV bars for multiple symbols over an exact date range.
+    Used by the backtester. Falls back to IEX feed if SIP fails."""
+    dc = data_client(pod_id)
+    start_dt = datetime.fromisoformat(start).replace(tzinfo=timezone.utc)
+    end_dt = datetime.fromisoformat(end).replace(tzinfo=timezone.utc)
+
+    def _fetch(feed_kwargs):
+        req = StockBarsRequest(
+            symbol_or_symbols=symbols,
+            timeframe=TimeFrame.Day,
+            start=start_dt,
+            end=end_dt,
+            **feed_kwargs,
+        )
+        return dc.get_stock_bars(req).data
+
+    try:
+        bars_data = _fetch({})
+    except Exception:
+        bars_data = _fetch({"feed": DataFeed.IEX})
+
+    result = {}
+    for symbol in symbols:
+        raw = bars_data.get(symbol, [])
+        result[symbol] = [{
+            "date": b.timestamp.strftime("%Y-%m-%d"),
+            "open": float(b.open), "high": float(b.high),
+            "low": float(b.low), "close": float(b.close), "volume": float(b.volume),
+        } for b in raw]
+    return result

@@ -15,6 +15,21 @@ acct = rqfc.pod("your pod name")   # or use the pod's UUID
 
 After login, `acct` is your trading interface. Every call goes through the backend — your Alpaca keys never touch this script.
 
+After a successful login, a compact dashboard is printed for each pod you are assigned to:
+
+```
+  test2 (index)
+  ──────────────────────────────────────
+  Portfolio Value      $  191,234.56
+  Cash                 $   45,000.00
+  Buying Power         $   90,000.00
+  Day Return                  +0.92%
+  5-Day Return                +2.34%
+  Sharpe (30d)                1.4821
+```
+
+Pass `summary=False` to `login()` to skip this.
+
 ---
 
 ## Placing Orders
@@ -431,3 +446,158 @@ rqfc.whoami()                        # your profile and pod list
 rqfc.pod("name or UUID")             # switch to a different pod
 rqfc.configure("http://...")         # change backend URL mid-session
 ```
+
+---
+
+## Risk Engine
+
+Every buy order is checked against the pod's **max position size** before submission. If filling the order would push a single stock above the configured percentage of the pod's portfolio value, the order is blocked and a message is printed.
+
+The limit is set by an admin in the portal (Risk X% button per pod). Default is 20%.
+
+### Bypassing the risk check
+
+Pass `override_risk=True` to any order function to skip the check:
+
+```python
+acct.buy("AAPL", 50, override_risk=True)
+acct.dollar_buy("NVDA", 30000, override_risk=True)
+acct.short("TSLA", 10, override_risk=True)
+acct.cover("TSLA", 10, override_risk=True)
+```
+
+All six order methods accept `override_risk`: `buy`, `sell`, `short`, `cover`, `dollar_buy`, `dollar_sell`.
+
+The risk check only applies to **buy-side orders** (buy, short, dollar_buy). Sells and covers are never blocked.
+
+---
+
+## Backtesting
+
+### `rqfc.daily_backtest(strategy_file, pod_name_or_id, *, universe, start, end, capital, draws)`
+
+Run a daily backtest using Alpaca market data (free tier — daily OHLCV back to 2016).
+
+```python
+import rqfc
+rqfc.login("you@email.com", "password")
+
+# Random 1-year window from the default ~200-stock universe
+results = rqfc.daily_backtest("test2.py")
+
+# Specific date range
+results = rqfc.daily_backtest("test2.py", start="2021-01-01", end="2022-01-01")
+
+# 3 random 1-year windows (Monte Carlo style)
+results = rqfc.daily_backtest("test2.py", draws=3)
+
+# Custom universe and starting capital
+results = rqfc.daily_backtest(
+    "test2.py",
+    universe=["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA"],
+    start="2022-01-01", end="2023-01-01",
+    capital=50_000,
+)
+```
+
+**Parameters:**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `strategy_file` | required | Path to your `.py` strategy file |
+| `pod_name_or_id` | first pod | Pod whose Alpaca credentials fetch the data |
+| `universe` | ~200 S&P 500 stocks | List of ticker symbols |
+| `start` | random | Start date `'YYYY-MM-DD'` |
+| `end` | random | End date `'YYYY-MM-DD'` |
+| `capital` | `100_000` | Starting capital in USD |
+| `draws` | `1` | Number of random windows (ignored if start+end given) |
+
+If `start` and `end` are both omitted, a random 1-year window is chosen between 2016 and today.
+
+**Output:** Prints a formatted summary block per window:
+
+```
+  ══════════════════════════════════════════════════
+  Strategy    test2
+  Period      2021-03-14  →  2022-03-14
+  Capital     $      100,000
+  Final NAV   $      118,450   (+18.45%)
+  ──────────────────────────────────────────────────
+  CAGR                    +18.45%
+  Sharpe (annualised)      1.2341
+  Max Drawdown            -12.30%
+  Benchmark SPY           +14.22%
+  Alpha vs SPY             +4.23%
+  ══════════════════════════════════════════════════
+```
+
+**Returns:** list of result dicts (one per window):
+
+```python
+[
+  {
+    "start": "2021-03-14",
+    "end":   "2022-03-14",
+    "capital": 100000.0,
+    "equity_curve": [
+      {"date": "2021-03-14", "nav": 100000.0},
+      {"date": "2021-03-15", "nav": 100230.0},
+      ...
+    ],
+    "benchmark_curve": [
+      {"date": "2021-03-14", "nav": 100000.0},
+      ...
+    ],
+    "metrics": {
+      "total_return":      0.1845,
+      "cagr":              0.1845,
+      "sharpe":            1.2341,
+      "max_drawdown":      0.1230,
+      "benchmark_return":  0.1422,
+    }
+  }
+]
+```
+
+---
+
+### Writing a strategy file
+
+Your strategy file must define one function:
+
+```python
+def generate_signals(date, bars):
+    ...
+    return {"AAPL": 0.25, "MSFT": 0.25}
+```
+
+| Argument | Type | Description |
+|----------|------|-------------|
+| `date` | `str` | Current simulation date as `'YYYY-MM-DD'` |
+| `bars` | `dict[str, DataFrame]` | `{symbol: DataFrame}` with columns `open high low close volume`, indexed by date string |
+| return | `dict[str, float]` | Target portfolio weights (must sum to ≤ 1.0) |
+
+Only historical data up to and including `date` is visible — no lookahead. Signals execute at the **next trading day's open price**.
+
+Symbols not present in the return dict are closed out. Weights are automatically normalised if they sum above 1.0.
+
+**Example — 5-day momentum (top 10 stocks, equal weight):**
+
+```python
+def generate_signals(date, bars):
+    momentum = {}
+    for symbol, df in bars.items():
+        if len(df) >= 6:
+            prev  = float(df["close"].iloc[-6])
+            last  = float(df["close"].iloc[-1])
+            if prev > 0:
+                momentum[symbol] = (last / prev) - 1
+
+    top = sorted(momentum, key=momentum.get, reverse=True)[:10]
+    return {s: 0.10 for s in top}
+```
+
+**Notes:**
+- `pandas` must be installed: `pip install pandas`
+- Data is fetched in a single batched call for the entire date range — expect 10–30 seconds for ~200 symbols over 1 year
+- Survivorship bias caveat: the default universe uses large-caps that existed in 2016, not today's S&P 500 constituents

@@ -149,6 +149,60 @@ def whoami() -> dict:
     return _require_session().get("/me")
 
 
+def daily_backtest(
+    strategy_file: str,
+    pod_name_or_id: str = None,
+    *,
+    universe: list = None,
+    start: str = None,
+    end: str = None,
+    capital: float = 100_000.0,
+    draws: int = 1,
+) -> list:
+    """Run a daily backtest using the RQFC backend for market data.
+
+    strategy_file   — path to a .py file that defines generate_signals(date, bars)
+    pod_name_or_id  — pod to borrow Alpaca credentials from (defaults to first pod)
+    universe        — list of symbols (defaults to ~200 S&P 500 stocks)
+    start / end     — 'YYYY-MM-DD'; if omitted, a random 1-year window is chosen
+    capital         — starting capital in USD (default 100 000)
+    draws           — how many random windows to sample (ignored if start+end given)
+
+    Returns a list of result dicts, one per window, each containing:
+      equity_curve, benchmark_curve, metrics (sharpe, cagr, max_drawdown, alpha)
+    """
+    from .backtest import run_daily_backtest
+
+    sess = _require_session()
+
+    # Resolve pod_id
+    pod_id = None
+    me = sess.get("/me")
+    pods = me.get("pods", [])
+    if pod_name_or_id:
+        for m in pods:
+            info = m.get("pods", {})
+            mid  = m.get("pod_id")
+            if mid == pod_name_or_id or info.get("name") == pod_name_or_id:
+                pod_id = mid
+                break
+        if not pod_id:
+            pod_id = pod_name_or_id  # treat as raw UUID
+    else:
+        if pods:
+            pod_id = pods[0].get("pod_id")
+
+    if not pod_id:
+        raise RuntimeError(
+            "No pod found. Pass pod_name_or_id= or make sure you are assigned to a pod."
+        )
+
+    return run_daily_backtest(
+        sess, pod_id, strategy_file,
+        universe=universe, start=start, end=end, capital=capital, draws=draws,
+    )
+
+
 __all__ = [
     "DEFAULT_BACKEND_URL",
     "configure",
@@ -156,6 +210,7 @@ __all__ = [
     "pod",
     "admin",
     "whoami",
+    "daily_backtest",
     "Account",
     "Admin",
 ]

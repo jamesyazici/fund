@@ -767,6 +767,24 @@ def market_bars(symbol: str, pod_id: str, days: int = 30,
     return alp.get_bars(pod_id, symbol, days)
 
 
+@app.get("/market/bulk-bars")
+def market_bulk_bars(
+    pod_id: str,
+    symbols: str,
+    start: str,
+    end: str,
+    trader: dict = Depends(get_current_trader),
+):
+    """Daily OHLCV for multiple symbols over a date range. Used by the backtester."""
+    _require_pod_access(trader, pod_id)
+    symbol_list = [s.strip().upper() for s in symbols.split(",") if s.strip()]
+    if not symbol_list:
+        raise HTTPException(400, "At least one symbol required.")
+    if len(symbol_list) > 500:
+        raise HTTPException(400, "Maximum 500 symbols per request.")
+    return alp.get_bulk_bars(pod_id, symbol_list, start, end)
+
+
 # ── Sync: pull Alpaca → Supabase (dashboard data) ─────────────────────────────
 
 @app.post("/sync/{pod_id}")
