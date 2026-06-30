@@ -80,14 +80,51 @@ def _seconds_until_market_open() -> float:
     return max(delta, 0)
 
 
-def _run_strategy(run_fn, acct, today_str: str) -> None:
+class _OrderCounter:
+    """Thin proxy around Account that counts every order call."""
+
+    def __init__(self, acct):
+        self._acct = acct
+        self.orders_placed = 0
+
+    def _counted(self, result):
+        if result is not None:
+            self.orders_placed += 1
+        return result
+
+    def buy(self, *a, **kw):        return self._counted(self._acct.buy(*a, **kw))
+    def sell(self, *a, **kw):       return self._counted(self._acct.sell(*a, **kw))
+    def short(self, *a, **kw):      return self._counted(self._acct.short(*a, **kw))
+    def cover(self, *a, **kw):      return self._counted(self._acct.cover(*a, **kw))
+    def dollar_buy(self, *a, **kw): return self._counted(self._acct.dollar_buy(*a, **kw))
+    def dollar_sell(self, *a, **kw):return self._counted(self._acct.dollar_sell(*a, **kw))
+
+    def __getattr__(self, name):
+        return getattr(self._acct, name)
+
+
+def _run_strategy(run_fn, acct, today_str: str, strategy_file: str) -> None:
     log.info(f"Running strategy for {today_str} …")
+    counter = _OrderCounter(acct)
     try:
-        # Reload strategy file on each run so edits take effect without restart
-        run_fn(today_str, acct)
-        log.info("Strategy complete.")
+        run_fn(today_str, counter)
+        n = counter.orders_placed
+        note = f"{n} order(s) placed" if n else "no trades"
+        log.info(f"Strategy complete — {note}.")
+        acct.log_run(
+            strategy_name=Path(strategy_file).name,
+            orders_placed=n,
+        )
     except Exception as exc:
         log.error(f"Strategy raised an error: {exc}", exc_info=True)
+        try:
+            acct.log_run(
+                strategy_name=Path(strategy_file).name,
+                orders_placed=counter.orders_placed,
+                note=f"error: {exc}",
+            )
+        except Exception:
+            pass
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
@@ -132,7 +169,7 @@ def main() -> None:
 
     if not schedule:
         # One-shot: run immediately and exit
-        _run_strategy(run_fn, acct, date.today().isoformat())
+        _run_strategy(run_fn, acct, date.today().isoformat(), strategy_file)
         return
 
     # ── Scheduled mode: run once per trading day at market open ──────────────
@@ -158,7 +195,7 @@ def main() -> None:
 
             today = date.today()
             if _is_weekday():
-                _run_strategy(run_fn, acct, today.isoformat())
+                _run_strategy(run_fn, acct, today.isoformat(), strategy_file)
                 last_run = today
         else:
             # Weekend or already ran today — check again in 30 minutes

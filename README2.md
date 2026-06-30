@@ -601,3 +601,40 @@ def generate_signals(date, bars):
 - `pandas` must be installed: `pip install pandas`
 - Data is fetched in a single batched call for the entire date range — expect 10–30 seconds for ~200 symbols over 1 year
 - Survivorship bias caveat: the default universe uses large-caps that existed in 2016, not today's S&P 500 constituents
+
+---
+
+## Admin Portal — Google OAuth Setup
+
+The admin portal (`https://your-backend.up.railway.app/portal`) uses Google OAuth for sign-in. Every admin needs to complete this once before they can access it.
+
+### One-time setup (done by whoever owns the Google Cloud project)
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com) and select your project (or create one)
+2. **APIs & Services → OAuth consent screen** — fill in app name, support email, and developer contact. Set User Type to **External** if admins have personal Google accounts.
+3. **APIs & Services → Credentials → Create Credentials → OAuth 2.0 Client ID**
+   - Application type: **Web application**
+   - Under **Authorized JavaScript origins**, add your Railway backend URL:
+     ```
+     https://your-backend.up.railway.app
+     ```
+   - Under **Authorized redirect URIs**, add:
+     ```
+     https://your-backend.up.railway.app/portal
+     ```
+   - Click **Create** and copy the **Client ID**
+4. In Railway, set two environment variables:
+   - `GOOGLE_OAUTH_CLIENT_ID` = the Client ID you just copied
+   - `ADMIN_GOOGLE_EMAILS` = comma-separated list of admin Gmail addresses, e.g. `alice@gmail.com,bob@gmail.com`
+5. Redeploy the backend (Railway does this automatically when env vars change)
+
+### Adding a new admin
+
+1. Add their Gmail address to `ADMIN_GOOGLE_EMAILS` in Railway (comma-separated)
+2. Railway redeploys automatically — they can sign in immediately after
+
+### Each admin's one-time step
+
+Nothing. They visit the portal URL, click **Sign in with Google**, and they're in — as long as their Gmail is in `ADMIN_GOOGLE_EMAILS`.
+
+If they see **Error 400: origin_mismatch**, the JavaScript origin hasn't been added to the OAuth client yet — go back to step 3 above and add it.

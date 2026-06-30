@@ -32,7 +32,7 @@ from .schemas import (
     OrderRequest, CancelRequest, CreatePodRequest,
     SetAlpacaRequest, CapitalRequest, MembershipRequest,
     PortalLogin, TraderLogin, CreateTraderRequest, CreateTraderApiKeyRequest,
-    PodRiskRequest,
+    PodRiskRequest, StrategyRunRequest,
 )
 
 PORTAL_HTML = Path(__file__).parent / "portal" / "index.html"
@@ -801,6 +801,22 @@ def sync_pod(pod_id: str, trader: dict = Depends(get_current_trader)):
         db.upsert_metrics(pod_id, m)
 
     return {"positions": len(positions), "nav_days": len(nav_rows), "metrics": bool(m)}
+
+
+# ── Strategy run logging ───────────────────────────────────────────────────────
+
+@app.post("/pods/{pod_id}/log-run")
+def log_strategy_run(pod_id: str, body: StrategyRunRequest, trader: dict = Depends(get_current_trader)):
+    _require_pod_access(trader, pod_id)
+    note = body.note or (f"{body.orders_placed} order(s) placed" if body.orders_placed else "no trades")
+    db.write_audit_log(
+        "strategy_run",
+        f"[{body.strategy}] {note}",
+        actor=trader.get("display_name") or trader.get("email"),
+        pod_id=pod_id,
+        trader_id=trader["id"],
+    )
+    return {"logged": True}
 
 
 # ── Admin portal ──────────────────────────────────────────────────────────────

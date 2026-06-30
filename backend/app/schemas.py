@@ -94,3 +94,9 @@ class PodRiskRequest(BaseModel):
         if not (0 < v <= 1):
             raise ValueError("max_position_pct must be between 0 and 1 (e.g. 0.20 for 20%)")
         return v
+
+
+class StrategyRunRequest(BaseModel):
+    strategy: str
+    orders_placed: int = 0
+    note: str = ""

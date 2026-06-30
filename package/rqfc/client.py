@@ -361,3 +361,14 @@ class Account:
     def show_history(self, limit: int = 50, my_trades_only: bool = False) -> None:
         """Print a formatted trade history table."""
         print(self.history(limit, my_trades_only))
+
+    def log_run(self, strategy_name: str, orders_placed: int, note: str = "") -> None:
+        """Write a strategy-run entry to the admin audit log (visible in portal Logs tab)."""
+        try:
+            self._s.post(f"/pods/{self.pod_id}/log-run", {
+                "strategy": strategy_name,
+                "orders_placed": orders_placed,
+                "note": note,
+            })
+        except Exception:
+            pass
