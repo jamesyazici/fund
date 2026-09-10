@@ -43,7 +43,12 @@ export function Live() {
     }
   }, [pods])
 
-  if (pods.length === 0) return <NoData title="The fund is not live yet" />
+  if (pods.length === 0)
+    return (
+      <div className="border-4 border-red-600">
+        <NoData title="The fund is not live yet" />
+      </div>
+    )
 
   const headline =
     view === 'all'
