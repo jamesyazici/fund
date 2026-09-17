@@ -591,6 +591,100 @@ def count_trades(pod_id) -> int:
     return sb().table("trades").select("id", count="exact").eq("pod_id", pod_id).execute().count or 0
 
 
+## ── Strategy deployments ──────────────────────────────────────────────────
+
+def create_strategy(pod_id: str, trader_id: str, name: str, bundle_b64: str, bundle_size: int) -> dict:
+    return (
+        sb().table("strategies")
+        .insert({
+            "pod_id": pod_id,
+            "trader_id": trader_id,
+            "name": name,
+            "status": "pending",
+            "bundle_b64": bundle_b64,
+            "bundle_size": bundle_size,
+        })
+        .execute()
+        .data[0]
+    )
+
+
+def stop_pod_strategies(pod_id: str) -> int:
+    """Mark any pending/running strategy for this pod as stopped. Returns how many."""
+    res = (
+        sb().table("strategies")
+        .update({"status": "stopped", "updated_at": _now()})
+        .eq("pod_id", pod_id)
+        .in_("status", ["pending", "running"])
+        .execute()
+    )
+    return len(res.data or [])
+
+
+def get_current_strategy(pod_id: str):
+    """The most recent pending/running strategy for a pod, if any (no bundle)."""
+    res = (
+        sb().table("strategies")
+        .select("id, pod_id, trader_id, name, status, status_detail, bundle_size, created_at, updated_at")
+        .eq("pod_id", pod_id)
+        .in_("status", ["pending", "running"])
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    return res.data[0] if res.data else None
+
+
+def get_strategy(strategy_id: str):
+    res = sb().table("strategies").select(
+        "id, pod_id, trader_id, name, status, status_detail, bundle_size, created_at"
+    ).eq("id", strategy_id).limit(1).execute()
+    return res.data[0] if res.data else None
+
+
+def get_strategy_bundle(strategy_id: str):
+    res = sb().table("strategies").select("id, pod_id, bundle_b64").eq("id", strategy_id).limit(1).execute()
+    return res.data[0] if res.data else None
+
+
+def list_pending_strategies() -> list[dict]:
+    res = (
+        sb().table("strategies")
+        .select("id, pod_id, trader_id, name, status, created_at")
+        .eq("status", "pending")
+        .order("created_at")
+        .execute()
+    )
+    return res.data or []
+
+
+def update_strategy_status(strategy_id: str, status: str, detail: str = None) -> None:
+    payload = {"status": status, "updated_at": _now()}
+    if detail is not None:
+        payload["status_detail"] = detail[:2000]
+    sb().table("strategies").update(payload).eq("id", strategy_id).execute()
+
+
+def append_strategy_log(strategy_id: str, line: str) -> None:
+    try:
+        sb().table("strategy_logs").insert({"strategy_id": strategy_id, "line": line[:4000]}).execute()
+    except Exception:
+        pass
+
+
+def list_strategy_logs(strategy_id: str, limit: int = 200) -> list[dict]:
+    limit = max(1, min(int(limit or 200), 1000))
+    res = (
+        sb().table("strategy_logs")
+        .select("line, logged_at")
+        .eq("strategy_id", strategy_id)
+        .order("logged_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    return list(reversed(res.data or []))
+
+
 def list_pod_trade_history(pod_id: str, trader_id: str = None, limit: int = 100) -> list[dict]:
     """Authenticated trade history for a pod, optionally filtered to one trader."""
     limit = max(1, min(int(limit or 100), 500))

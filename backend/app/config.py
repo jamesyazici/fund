@@ -46,6 +46,10 @@ class Settings:
         # Portal tokens are signed with this secret.
         self.admin_portal_secret = os.environ.get("ADMIN_PORTAL_SECRET") or self.supabase_jwt_secret
 
+        # Shared secret the VM runner uses to call /internal/* endpoints.
+        # Blank means those endpoints refuse every request (fail closed).
+        self.internal_shared_secret = os.environ.get("INTERNAL_SHARED_SECRET", "")
+
 
 def _require(key: str) -> str:
     val = os.environ.get(key)

@@ -100,3 +100,18 @@ class StrategyRunRequest(BaseModel):
     strategy: str
     orders_placed: int = 0
     note: str = ""
+
+
+class DeployStrategyRequest(BaseModel):
+    pod: str  # pod name or UUID
+    name: str
+    bundle_b64: str
+
+
+class StrategyStatusUpdate(BaseModel):
+    status: Literal["pending", "running", "stopped", "failed"]
+    detail: Optional[str] = None
+
+
+class StrategyLogLine(BaseModel):
+    line: str

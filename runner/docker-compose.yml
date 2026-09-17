@@ -1,9 +1,13 @@
 name: rqfc-runner
 
-# Phase 1: the message bus + the market-data hub.
-# Later phases add: supervisor, fills-listener, portfolio-sync, and one
-# sandbox container per pod (started dynamically by the supervisor, joined
-# to the `rqfc` network below).
+# Phase 1: message bus + market-data hub.
+# Phase 2 (this): the supervisor, which deploys strategies into per-pod
+# sandbox containers (started dynamically, joined to the `rqfc` network).
+# Later: fills-listener, portfolio-sync.
+#
+# Always run `docker compose` commands from inside this directory (runner/) —
+# the supervisor's HOST_REPO_DIR / HOST_BUNDLES_DIR below are derived from
+# $PWD, the directory you're standing in when you invoke compose.
 
 services:
   nats:
@@ -21,6 +25,25 @@ services:
     environment:
       NATS_URL: nats://nats:4222
     depends_on: [nats]
+    networks: [rqfc]
+
+  supervisor:
+    build:
+      context: ..
+      dockerfile: runner/supervisor/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # These are HOST paths (the supervisor talks to the host's Docker
+      # daemon over the mounted socket, so every path it passes to `docker
+      # run`/`docker build` must resolve on the host, not inside this
+      # container). $PWD here is runner/ — see the note above.
+      HOST_REPO_DIR: ${PWD}/..
+      HOST_BUNDLES_DIR: ${PWD}/_bundles
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./_bundles:/data/bundles
+    depends_on: [nats, hub]
     networks: [rqfc]
 
 networks:

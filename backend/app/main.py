@@ -28,6 +28,7 @@ from .auth import (
 from .alpaca_client import invalidate_pod_creds_cache
 from .portal_auth import get_admin_actor, verify_google_admin, issue_portal_token
 from .config import get_settings
+from .strategies import router as strategies_router
 from .schemas import (
     OrderRequest, CancelRequest, CreatePodRequest,
     SetAlpacaRequest, CapitalRequest, MembershipRequest,
@@ -53,6 +54,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(strategies_router)
 
 
 # ── Permission helper ─────────────────────────────────────────────────────────

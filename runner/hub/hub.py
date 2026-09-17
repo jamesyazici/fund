@@ -7,9 +7,15 @@ every trade / quote / 1-minute bar as JSON:
     md.quote.<SYMBOL>   {"symbol", "bid_price", "bid_size", "ask_price", "ask_size", "timestamp"}
     md.bar.<SYMBOL>     {"symbol", "open", "high", "low", "close", "volume", "timestamp"}
 
-Dynamic subscription over the ``hub.control`` subject arrives with the supervisor
-in a later phase. For now, set ``HUB_SYMBOLS`` to the union of every symbol your
-deployed strategies need.
+Symbols in ``HUB_SYMBOLS`` are subscribed at startup. A deployed strategy adds
+more at runtime by publishing to ``hub.control``:
+
+    {"action": "subscribe", "symbols": ["AAPL", "MSFT"]}
+
+(the sandbox runtime already does this once, on start). Symbols are only ever
+added, never removed, for the life of the process — an idle extra subscription
+costs nothing, and removal would need to track how many strategies still want
+a symbol.
 
 Environment
 -----------
@@ -41,6 +47,7 @@ async def main() -> None:
 
     nc = await nats.connect(NATS_URL, name="marketdata-hub", max_reconnect_attempts=-1)
     print(f"[hub] NATS {NATS_URL} | feed={FEED.value} | symbols={SYMBOLS or '(none)'}", flush=True)
+    subscribed: set[str] = set(SYMBOLS)
 
     async def publish(subject: str, obj: dict) -> None:
         try:
@@ -83,7 +90,31 @@ async def main() -> None:
         stream.subscribe_quotes(on_quote, *SYMBOLS)
         stream.subscribe_bars(on_bar, *SYMBOLS)
     else:
-        print("[hub] HUB_SYMBOLS is empty — nothing to stream", flush=True)
+        print("[hub] HUB_SYMBOLS is empty — nothing to stream at startup", flush=True)
+
+    async def on_control(msg) -> None:
+        try:
+            data = json.loads(msg.data)
+        except Exception:
+            return
+        if data.get("action") != "subscribe":
+            return
+        wanted = {str(s).strip().upper() for s in data.get("symbols") or [] if str(s).strip()}
+        new = sorted(wanted - subscribed)
+        if not new:
+            return
+        subscribed.update(new)
+        print(f"[hub] adding symbols at runtime: {new}", flush=True)
+        try:
+            # alpaca-py's subscribe_* calls work while the stream is already
+            # running — they push a subscribe frame over the open websocket.
+            stream.subscribe_trades(on_trade, *new)
+            stream.subscribe_quotes(on_quote, *new)
+            stream.subscribe_bars(on_bar, *new)
+        except Exception as exc:
+            print(f"[hub] failed to add symbols {new}: {exc}", flush=True)
+
+    await nc.subscribe("hub.control", cb=on_control)
 
     # `_run_forever()` is alpaca-py's coroutine entrypoint for running the
     # websocket inside an existing event loop (StockDataStream.run() just wraps
