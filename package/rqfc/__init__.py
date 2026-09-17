@@ -28,6 +28,7 @@ import os
 from ._session import Session
 from .client import Account
 from .admin import Admin
+from .strategy import Strategy
 
 __version__ = "1.0.0"
 DEFAULT_BACKEND_URL = "https://fund-production-3f88.up.railway.app"
@@ -213,4 +214,5 @@ __all__ = [
     "daily_backtest",
     "Account",
     "Admin",
+    "Strategy",
 ]

@@ -1,0 +1,28 @@
+name: rqfc-runner
+
+# Phase 1: the message bus + the market-data hub.
+# Later phases add: supervisor, fills-listener, portfolio-sync, and one
+# sandbox container per pod (started dynamically by the supervisor, joined
+# to the `rqfc` network below).
+
+services:
+  nats:
+    image: nats:2.10-alpine
+    restart: unless-stopped
+    networks: [rqfc]
+    # No ports published — everything talks over the compose network only.
+
+  hub:
+    build:
+      context: ..
+      dockerfile: runner/hub/Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NATS_URL: nats://nats:4222
+    depends_on: [nats]
+    networks: [rqfc]
+
+networks:
+  rqfc:
+    name: rqfc
