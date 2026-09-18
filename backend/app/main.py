@@ -603,27 +603,64 @@ def _minute_nav_for_pod(pod: dict, minutes: int) -> list[dict]:
 _BENCHMARK_SYMBOL = "SPY"
 
 
-def _benchmark_series(minutes: int) -> list[dict]:
-    """Raw SPY 1Min close series for the window — unnormalized. The frontend
-    scales it to whatever it's comparing against (one pod's allocated capital,
-    or the aggregate total), so this endpoint doesn't need to know that.
+def _earliest_inception(pods: list[dict]) -> datetime | None:
+    dates = []
+    for p in pods:
+        raw = p.get("inception_date")
+        if not raw:
+            continue
+        try:
+            dates.append(datetime.fromisoformat(str(raw)).replace(tzinfo=timezone.utc))
+        except ValueError:
+            continue
+    return min(dates) if dates else None
+
+
+def _benchmark_series(minutes: int, since: datetime | None = None) -> list[dict]:
+    """Raw SPY close series — unnormalized. The frontend scales it to whatever
+    it's comparing against (each pod normalizes independently from its own
+    first NAV point), so this endpoint doesn't need to know pod capital.
+
+    Spliced from two sources so pods older than the live window still have
+    something to anchor against:
+      - daily closes from `since` (typically the oldest pod's inception, or
+        the last 30 days if there's no pod yet) up to the start of the minute
+        window — cheap, same call the backtester uses for years of history.
+      - 1Min closes for the last `minutes` — the live, high-resolution tail.
 
     Uses the "__env__" pod sentinel like /public/ticker: market data doesn't
     need pod-specific credentials, so this avoids coupling the benchmark to
     any one pod's Alpaca account.
     """
+    now = datetime.now(timezone.utc)
+    minute_start = now - timedelta(minutes=minutes)
+    points: list[dict] = []
+
+    daily_start = min(since or (minute_start - timedelta(days=30)), minute_start - timedelta(days=1))
+    days_back = max(1, min((now - daily_start).days + 2, 3650))
     try:
-        start = datetime.now(timezone.utc) - timedelta(minutes=minutes)
-        closes = alp.get_minute_closes("__env__", [_BENCHMARK_SYMBOL], start)
+        bars = alp.get_bars("__env__", _BENCHMARK_SYMBOL, days=days_back)
+        cutoff = minute_start.date().isoformat()
+        points.extend(
+            {"t": f"{b['date']}T00:00:00+00:00", "value": b["close"]}
+            for b in bars if b["date"] < cutoff
+        )
+    except Exception:
+        pass
+
+    try:
+        closes = alp.get_minute_closes("__env__", [_BENCHMARK_SYMBOL], minute_start)
         pts = closes.get(_BENCHMARK_SYMBOL) or []
         if not pts:
             # Market closed for the requested window — reach back to the most
             # recent session, same fallback _minute_nav_for_pod uses.
-            week = alp.get_minute_closes("__env__", [_BENCHMARK_SYMBOL], datetime.now(timezone.utc) - timedelta(days=5))
+            week = alp.get_minute_closes("__env__", [_BENCHMARK_SYMBOL], now - timedelta(days=5))
             pts = (week.get(_BENCHMARK_SYMBOL) or [])[-minutes:]
-        return [{"t": ts.isoformat(), "value": round(close, 4)} for ts, close in pts]
+        points.extend({"t": ts.isoformat(), "value": round(close, 4)} for ts, close in pts)
     except Exception:
-        return []
+        pass
+
+    return points
 
 
 @app.get("/public/nav-series")
@@ -645,7 +682,10 @@ def public_nav_series(minutes: int = 390):
     payload = {
         "timeframe": "1Min",
         "as_of": datetime.now(timezone.utc).isoformat(),
-        "benchmark": {"symbol": _BENCHMARK_SYMBOL, "series": _benchmark_series(minutes)},
+        "benchmark": {
+            "symbol": _BENCHMARK_SYMBOL,
+            "series": _benchmark_series(minutes, since=_earliest_inception(pods)),
+        },
         "pods": [
             {"pod_id": p["id"], "name": p["name"], "series": _minute_nav_for_pod(p, minutes)}
             for p in pods

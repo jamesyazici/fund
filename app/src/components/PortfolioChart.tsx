@@ -22,44 +22,52 @@ interface Props {
   benchmark?: Benchmark | null
 }
 
-// Live account value of every pod on one graph, labelled by pod, plus an
-// optional benchmark line (e.g. SPY) normalized to whatever's shown — the
-// combined allocated capital of the currently-visible pod(s) — so it reads
-// as "if this money had gone into the index instead."
+// Live account value of every pod on one graph, labelled by pod, plus one
+// benchmark line (e.g. SPY) per pod — each independently anchored to that
+// pod's own first NAV point (its own allocated capital, at its own start
+// time), so it always reads as "if this pod's money had gone into the index
+// instead, starting exactly when this pod did."
 export function PortfolioChart({ pods, visible, height = 420, benchmark }: Props) {
   const shown = visible ? pods.filter((p) => visible.includes(p.id)) : pods
 
-  const benchmarkStart = useMemo(
-    () => shown.reduce((a, p) => a + p.allocatedCapital, 0),
-    [shown],
-  )
-
-  // raw benchmark prices -> dollar-value line starting at benchmarkStart
-  const benchmarkByTime = useMemo(() => {
+  // one dollar-value benchmark line per pod, each keyed off that pod's own
+  // first NAV point rather than a shared/arbitrary start
+  const benchmarkByPod = useMemo(() => {
     const series = benchmark?.series
-    if (!series?.length || benchmarkStart <= 0) return null
-    const first = series[0].value
-    if (!first) return null
-    return new Map(series.map((b) => [b.t, benchmarkStart * (b.value / first)]))
-  }, [benchmark, benchmarkStart])
+    const out = new Map<string, Map<string, number>>()
+    if (!series?.length) return out
+    for (const p of shown) {
+      const start = p.nav[0]
+      if (!start || p.allocatedCapital <= 0) continue
+      const anchor = series.find((b) => b.t >= start.t) ?? series[series.length - 1]
+      if (!anchor?.value) continue
+      const line = new Map<string, number>()
+      for (const b of series) {
+        if (b.t < start.t || !b.value) continue
+        line.set(b.t, p.allocatedCapital * (b.value / anchor.value))
+      }
+      if (line.size) out.set(p.id, line)
+    }
+    return out
+  }, [benchmark, shown])
 
-  // merge every pod's 1-min series (+ the benchmark) onto one timeline keyed by timestamp
+  // merge every pod's 1-min series (+ its own benchmark line) onto one timeline
   const data = useMemo(() => {
     const stamps = new Set<string>()
     shown.forEach((p) => p.nav.forEach((n) => stamps.add(n.t)))
-    benchmarkByTime?.forEach((_, t) => stamps.add(t))
+    benchmarkByPod.forEach((line) => line.forEach((_, t) => stamps.add(t)))
     const byPod = new Map(shown.map((p) => [p.id, new Map(p.nav.map((n) => [n.t, n.value]))]))
     return [...stamps].sort().map((t) => {
       const row: Record<string, number | string> = { t }
       shown.forEach((p) => {
         const v = byPod.get(p.id)?.get(t)
         if (v != null) row[p.id] = v
+        const b = benchmarkByPod.get(p.id)?.get(t)
+        if (b != null) row[`bm_${p.id}`] = b
       })
-      const b = benchmarkByTime?.get(t)
-      if (b != null) row.benchmark = b
       return row
     })
-  }, [shown, benchmarkByTime])
+  }, [shown, benchmarkByPod])
 
   // intraday (1-min bars) → show times; longer history → show dates
   const intraday = useMemo(() => {
@@ -78,7 +86,9 @@ export function PortfolioChart({ pods, visible, height = 420, benchmark }: Props
   // hasn't moved much; adds 8% padding when the natural range is larger.
   const yDomain = useMemo((): [number, number] | ['auto', 'auto'] => {
     const vals = data.flatMap((row) =>
-      [...shown.map((p) => row[p.id]), row.benchmark].filter((v): v is number => typeof v === 'number'),
+      shown
+        .flatMap((p) => [row[p.id], row[`bm_${p.id}`]])
+        .filter((v): v is number => typeof v === 'number'),
     )
     if (!vals.length) return ['auto', 'auto']
     const dataMin = Math.min(...vals)
@@ -114,13 +124,13 @@ export function PortfolioChart({ pods, visible, height = 420, benchmark }: Props
             </span>
           </span>
         ))}
-        {benchmarkByTime && benchmark && (
+        {benchmarkByPod.size > 0 && benchmark && (
           <span className="flex items-center gap-2 text-2xs uppercase tracking-[0.1em]">
             <span
               className="inline-block h-2.5 w-2.5 border border-rule"
               style={{ background: BENCHMARK_COLOR }}
             />
-            <span className="font-semibold">{benchmark.symbol} (equiv.)</span>
+            <span className="font-semibold">{benchmark.symbol} (equiv., per pod)</span>
           </span>
         )}
       </div>
@@ -155,22 +165,31 @@ export function PortfolioChart({ pods, visible, height = 420, benchmark }: Props
                 new Date(v).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
               }
               formatter={(value: number, name: string) => {
-                if (name === 'benchmark') return [formatCurrency(value), `${benchmark?.symbol ?? 'Benchmark'} (equiv.)`]
+                if (name.startsWith('bm_')) {
+                  const pod = pods.find((p) => p.id === name.slice(3))
+                  return [
+                    formatCurrency(value),
+                    `${benchmark?.symbol ?? 'Benchmark'}${pod ? ` (${pod.code} equiv.)` : ' (equiv.)'}`,
+                  ]
+                }
                 const pod = pods.find((p) => p.id === name)
                 return [formatCurrency(value), pod ? `${pod.code}: ${pod.name}` : name]
               }}
             />
-            {benchmarkByTime && (
-              <Line
-                type="monotone"
-                dataKey="benchmark"
-                stroke={BENCHMARK_COLOR}
-                strokeWidth={1.4}
-                strokeDasharray="4 3"
-                dot={false}
-                connectNulls
-                isAnimationActive={false}
-              />
+            {shown.map((p) =>
+              benchmarkByPod.has(p.id) ? (
+                <Line
+                  key={`bm-${p.id}`}
+                  type="monotone"
+                  dataKey={`bm_${p.id}`}
+                  stroke={BENCHMARK_COLOR}
+                  strokeWidth={1.3}
+                  strokeDasharray="4 3"
+                  dot={false}
+                  connectNulls
+                  isAnimationActive={false}
+                />
+              ) : null,
             )}
             {shown.map((p) => (
               <Line
