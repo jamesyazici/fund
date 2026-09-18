@@ -593,20 +593,21 @@ def count_trades(pod_id) -> int:
 
 ## ── Strategy deployments ──────────────────────────────────────────────────
 
-def create_strategy(pod_id: str, trader_id: str, name: str, bundle_b64: str, bundle_size: int) -> dict:
-    return (
-        sb().table("strategies")
-        .insert({
-            "pod_id": pod_id,
-            "trader_id": trader_id,
-            "name": name,
-            "status": "pending",
-            "bundle_b64": bundle_b64,
-            "bundle_size": bundle_size,
-        })
-        .execute()
-        .data[0]
-    )
+def create_strategy(
+    pod_id: str, trader_id: str, name: str, bundle_b64: str, bundle_size: int,
+    allocated_capital: float = None,
+) -> dict:
+    payload = {
+        "pod_id": pod_id,
+        "trader_id": trader_id,
+        "name": name,
+        "status": "pending",
+        "bundle_b64": bundle_b64,
+        "bundle_size": bundle_size,
+    }
+    if allocated_capital is not None:
+        payload["allocated_capital"] = allocated_capital
+    return sb().table("strategies").insert(payload).execute().data[0]
 
 
 def stop_pod_strategies(pod_id: str) -> int:
@@ -625,7 +626,10 @@ def get_current_strategy(pod_id: str):
     """The most recent pending/running strategy for a pod, if any (no bundle)."""
     res = (
         sb().table("strategies")
-        .select("id, pod_id, trader_id, name, status, status_detail, bundle_size, created_at, updated_at")
+        .select(
+            "id, pod_id, trader_id, name, status, status_detail, allocated_capital, "
+            "bundle_size, created_at, updated_at"
+        )
         .eq("pod_id", pod_id)
         .in_("status", ["pending", "running"])
         .order("created_at", desc=True)
@@ -637,9 +641,33 @@ def get_current_strategy(pod_id: str):
 
 def get_strategy(strategy_id: str):
     res = sb().table("strategies").select(
-        "id, pod_id, trader_id, name, status, status_detail, bundle_size, created_at"
+        "id, pod_id, trader_id, name, status, status_detail, allocated_capital, bundle_size, created_at"
     ).eq("id", strategy_id).limit(1).execute()
     return res.data[0] if res.data else None
+
+
+def get_strategy_deployed_capital(strategy_id: str) -> float:
+    """Net notional a strategy has committed: buy notional minus sell notional
+    across its own trades. A simple spend ledger, not mark-to-market — a
+    position moving in price doesn't itself count against the cap."""
+    res = (
+        sb().table("trades")
+        .select("side, notional, quantity, price")
+        .eq("strategy_id", strategy_id)
+        .execute()
+    )
+    total = 0.0
+    for t in res.data or []:
+        notional = t.get("notional")
+        if notional is None:
+            qty, price = t.get("quantity"), t.get("price")
+            notional = abs(float(qty) * float(price)) if qty is not None and price is not None else 0.0
+        notional = abs(float(notional or 0))
+        if t.get("side") == "buy":
+            total += notional
+        elif t.get("side") == "sell":
+            total -= notional
+    return max(total, 0.0)
 
 
 def get_strategy_bundle(strategy_id: str):

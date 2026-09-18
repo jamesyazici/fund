@@ -163,7 +163,7 @@ def extract_bundle(strategy_id: str, bundle_b64: str) -> str:
     return f"{HOST_BUNDLES_DIR}/{strategy_id}"
 
 
-def start_container(pod_id: str, token: str, bundle_host_dir: str) -> None:
+def start_container(strategy_id: str, pod_id: str, token: str, bundle_host_dir: str) -> None:
     name = container_name(pod_id)
     _run(["docker", "rm", "-f", name])  # ignore failure if it doesn't exist
     cmd = [
@@ -176,6 +176,7 @@ def start_container(pod_id: str, token: str, bundle_host_dir: str) -> None:
         "-e", f"RQFC_BACKEND_URL={BACKEND_URL}",
         "-e", f"RQFC_STRATEGY_TOKEN={token}",
         "-e", f"RQFC_POD_ID={pod_id}",
+        "-e", f"RQFC_STRATEGY_ID={strategy_id}",
         "-e", f"RQFC_EVENT_TIMEOUT_MS={EVENT_TIMEOUT_MS}",
         "rqfc-sandbox",
     ]
@@ -212,7 +213,7 @@ def deploy(strategy: dict, tracked: dict) -> None:
     token = get_token(sid)["token"]
     bundle_host_dir = extract_bundle(sid, get_bundle(sid)["bundle_b64"])
     ensure_sandbox_image()
-    start_container(pod_id, token, bundle_host_dir)
+    start_container(sid, pod_id, token, bundle_host_dir)
     set_status(sid, "running")
     tracked[pod_id] = {"strategy_id": sid, "since": str(int(time.time()))}
     print(f"[supervisor] {container_name(pod_id)} started for strategy {sid}", flush=True)

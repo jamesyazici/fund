@@ -65,10 +65,14 @@ def deploy_strategy(req: DeployStrategyRequest, trader: dict = Depends(get_curre
         raise HTTPException(400, f"Bundle exceeds {_MAX_BUNDLE_BYTES // 1024} KB limit.")
 
     db.stop_pod_strategies(pod["id"])  # at most one active strategy per pod
-    row = db.create_strategy(pod["id"], trader["id"], req.name, req.bundle_b64, len(bundle))
+    row = db.create_strategy(
+        pod["id"], trader["id"], req.name, req.bundle_b64, len(bundle),
+        allocated_capital=req.capital,
+    )
+    cap_note = f", capped at ${req.capital:,.0f}" if req.capital else ""
     db.write_audit_log(
         "strategy_deployed",
-        f"Strategy '{req.name}' deployed to pod '{pod['name']}' ({len(bundle)} bytes)",
+        f"Strategy '{req.name}' deployed to pod '{pod['name']}' ({len(bundle)} bytes){cap_note}",
         actor=trader.get("display_name"), pod_id=pod["id"], trader_id=trader["id"],
     )
     return {"id": row["id"], "pod_id": pod["id"], "status": row["status"]}

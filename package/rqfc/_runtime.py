@@ -21,6 +21,8 @@ Environment
 RQFC_BACKEND_URL       backend base URL (required)
 RQFC_STRATEGY_TOKEN    pod-scoped bearer token or an ``rqfc_`` API key (required)
 RQFC_POD_ID            pod UUID (required)
+RQFC_STRATEGY_ID       strategy UUID (optional — tags orders for capital-cap
+                       enforcement; omit for local testing without a deploy)
 RQFC_STRATEGY_FILE     path to the strategy .py  (default: /strategy/strategy.py)
 NATS_URL               e.g. nats://nats:4222     (default)
 RQFC_EVENT_TIMEOUT_MS  per-hook wall-clock budget in ms (default: 30000)
@@ -89,6 +91,7 @@ class Runtime:
         self.backend = _env("RQFC_BACKEND_URL", required=True)
         self.token = _env("RQFC_STRATEGY_TOKEN", required=True)
         self.pod_id = _env("RQFC_POD_ID", required=True)
+        self.strategy_id = _env("RQFC_STRATEGY_ID", "") or None
         self.strategy_file = _env("RQFC_STRATEGY_FILE", "/strategy/strategy.py")
         self.nats_url = _env("NATS_URL", "nats://nats:4222")
         self.timeout = float(_env("RQFC_EVENT_TIMEOUT_MS", "30000")) / 1000.0
@@ -98,7 +101,9 @@ class Runtime:
         # Any bearer string works here — a pod-scoped strategy token or an
         # rqfc_ API key. The backend already accepts both on /orders.
         session.use_api_key(self.token)
-        self.acct = Account(session, self.pod_id)  # UUID -> no name-resolution call
+        # UUID pod ref -> no name-resolution call. strategy_id (if set) tags
+        # every order this strategy places, for capital-cap enforcement.
+        self.acct = Account(session, self.pod_id, strategy_id=self.strategy_id)
 
         self.strategy = load_strategy(self.strategy_file, self.acct)
         self.symbols = sorted({s.upper() for s in (self.strategy.symbols or [])})
@@ -227,7 +232,7 @@ class Runtime:
                 pass
 
         print(
-            f"[runtime] started pod={self.pod_id} "
+            f"[runtime] started pod={self.pod_id} strategy_id={self.strategy_id or '(none)'} "
             f"strategy={type(self.strategy).__name__} symbols={want} "
             f"backend={self.backend}",
             flush=True,

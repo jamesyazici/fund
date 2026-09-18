@@ -67,15 +67,17 @@ def deploy(args) -> None:
         "pod": args.pod,
         "name": name,
         "bundle_b64": base64.b64encode(bundle).decode(),
+        "capital": args.capital,
     }
     resp = requests.post(f"{backend}/strategies", json=payload, headers=headers, timeout=60)
     if resp.status_code >= 400:
         sys.exit(f"[{resp.status_code}] {_detail(resp)}")
     data = resp.json()
+    cap_note = f", capped at ${args.capital:,.0f}" if args.capital else ""
     print(
         f"Deployed '{name}' to pod {args.pod} "
         f"(id {data.get('id', '?')}, status {data.get('status', '?')}, "
-        f"{len(bundle)} bytes)."
+        f"{len(bundle)} bytes{cap_note})."
     )
 
 
@@ -109,6 +111,10 @@ def main(argv=None) -> None:
     dp = sub.add_parser("deploy", help="upload a strategy file or directory to a pod")
     dp.add_argument("path", help="path to strategy.py or a directory containing it")
     dp.add_argument("--name", default=None, help="display name (defaults to the file/dir name)")
+    dp.add_argument(
+        "--capital", type=float, default=None,
+        help="dollar cap on this strategy's buy orders (unset = no cap)",
+    )
     _add_common(dp)
     dp.set_defaults(func=deploy)
 

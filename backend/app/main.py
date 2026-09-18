@@ -298,6 +298,41 @@ def place_order(req: OrderRequest, trader: dict = Depends(get_current_trader)):
         except Exception:
             pass  # risk check failure never blocks a trade
 
+    # ── Strategy capital cap: hard block, no override ─────────────────────────
+    # Deliberately minimal: a flat dollar ceiling on buy-side notional a
+    # deployed strategy has committed (buys minus sells, its own trades only).
+    # Unlike the pod risk check above, this never fails open — if we can't
+    # verify the order against the cap, we reject rather than let it through.
+    strategy = None
+    if req.strategy_id:
+        candidate = db.get_strategy(req.strategy_id)
+        if (
+            candidate
+            and candidate.get("trader_id") == trader["id"]
+            and candidate.get("pod_id") == req.pod_id
+        ):
+            strategy = candidate
+
+    cap = (strategy or {}).get("allocated_capital")
+    if strategy and cap and req.side == "buy":
+        if req.notional:
+            incoming = float(req.notional)
+        else:
+            try:
+                incoming = float(req.qty) * alp.get_price(req.pod_id, req.symbol)
+            except Exception:
+                raise HTTPException(
+                    422, "Could not verify this order against the strategy's capital limit — try again."
+                )
+        deployed = db.get_strategy_deployed_capital(strategy["id"])
+        cap = float(cap)
+        if deployed + incoming > cap:
+            raise HTTPException(
+                422,
+                f"Strategy capital limit: this order would commit ${deployed + incoming:,.0f} "
+                f"of a ${cap:,.0f} allocation (already deployed ${deployed:,.0f}).",
+            )
+
     order = alp.submit_order(
         req.pod_id, symbol=req.symbol, side=req.side, qty=req.qty,
         notional=req.notional, order_type=req.order_type,
@@ -310,6 +345,8 @@ def place_order(req: OrderRequest, trader: dict = Depends(get_current_trader)):
         requested_qty=req.qty,
         requested_notional=req.notional,
     )
+    if strategy:
+        row["strategy_id"] = strategy["id"]
     logger.info(
         "Logging trade row trader_id=%s pod_id=%s alpaca_order_id=%s row=%s",
         trader.get("id"),

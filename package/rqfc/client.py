@@ -240,9 +240,13 @@ _ORDER_ERRORS = [
 class Account:
     """A pod you can trade. Obtain one via rqfc.pod(name_or_id)."""
 
-    def __init__(self, session: Session, pod_ref: str):
+    def __init__(self, session: Session, pod_ref: str, strategy_id: str | None = None):
         self._s = session
         self.pod_id = self._resolve_pod(pod_ref)
+        # Set only for a deployed strategy's own sandbox session — tags every
+        # order so the backend can attribute it and enforce that strategy's
+        # capital cap. None for ordinary manual/API-key trading.
+        self.strategy_id = strategy_id
 
     def _resolve_pod(self, ref: str) -> str:
         if looks_like_uuid(ref):
@@ -255,8 +259,11 @@ class Account:
     # ── Orders ───────────────────────────────────────────────────────────────
 
     def _order(self, **kw):
+        payload = {"pod_id": self.pod_id, **kw}
+        if self.strategy_id:
+            payload["strategy_id"] = self.strategy_id
         try:
-            return OrderResult(self._s.post("/orders", {"pod_id": self.pod_id, **kw}))
+            return OrderResult(self._s.post("/orders", payload))
         except RuntimeError as exc:
             raw = str(exc).lower()
             label = kw.get("symbol", "?").upper()

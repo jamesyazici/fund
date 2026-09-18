@@ -14,6 +14,10 @@ class OrderRequest(BaseModel):
     limit_price: Optional[float] = None
     time_in_force: Literal["day", "gtc", "ioc", "fok", "opg", "cls"] = "day"
     override_risk: bool = False
+    # Set by the sandbox runtime for a deployed strategy's own orders. The
+    # backend verifies it belongs to the calling trader + this pod before
+    # trusting it for capital-cap enforcement and trade attribution.
+    strategy_id: Optional[str] = None
 
     @field_validator("symbol")
     @classmethod
@@ -106,6 +110,7 @@ class DeployStrategyRequest(BaseModel):
     pod: str  # pod name or UUID
     name: str
     bundle_b64: str
+    capital: Optional[float] = None  # dollar cap on this strategy's buy orders; unset = no cap
 
 
 class StrategyStatusUpdate(BaseModel):
