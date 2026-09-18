@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { backendUrl } from '@/lib/backend'
 import { maxDrawdownOf, round, sharpeOf } from './compute'
-import type { FundData, NavPoint, Pod, Position, Tint, TickerItem, Trade, Trader } from './types'
+import type { Benchmark, FundData, NavPoint, Pod, Position, Tint, TickerItem, Trade, Trader } from './types'
 
 const TINTS: Tint[] = ['p3', 'p1', 'p5', 'p4', 'p2', 'p6']
 
@@ -83,10 +83,13 @@ interface NavSeriesPod {
   name: string
   series: { t: string; value: number }[]
 }
+interface NavSeriesResponse {
+  pods: NavSeriesPod[]
+  benchmark?: { symbol: string; series: { t: string; value: number }[] }
+}
 
 const fetchLive = () => getJSON<{ pods: LiveSnapshot[] }>('/public/live').then((d) => d?.pods ?? null)
-const fetchNavSeries = (minutes: number) =>
-  getJSON<{ pods: NavSeriesPod[] }>(`/public/nav-series?minutes=${minutes}`).then((d) => d?.pods ?? null)
+const fetchNavSeries = (minutes: number) => getJSON<NavSeriesResponse>(`/public/nav-series?minutes=${minutes}`)
 const fetchTrades = () => getJSON<{ trades: LiveTrade[] }>('/public/trades?limit=200').then((d) => d?.trades ?? null)
 const fetchTicker = () =>
   getJSON<{ items: { symbol: string; price: number; change_pct: number }[] }>('/public/ticker').then(
@@ -146,6 +149,7 @@ function assemble(
   liveTrades: LiveTrade[] | null,
   ticker: TickerItem[] | null,
   navSeries: NavSeriesPod[] | null,
+  benchmark: Benchmark | null,
 ): FundData {
   const empty: FundData = {
     pods: [],
@@ -153,6 +157,7 @@ function assemble(
     trades: [],
     positions: [],
     ticker: ticker ?? [],
+    benchmark,
     isLive: false,
     asOf: new Date().toISOString(),
   }
@@ -283,6 +288,7 @@ function assemble(
     trades,
     positions: pods.flatMap((p) => p.positions),
     ticker: ticker ?? [],
+    benchmark,
     isLive: true,
     asOf: new Date().toISOString(),
   }
@@ -302,9 +308,22 @@ export function useFund(minutes: number | null = 390): FundData {
     staleTime: 30_000,
   })
 
+  const benchmark: Benchmark | null = useMemo(() => {
+    const b = navSeries?.benchmark
+    if (!b?.series?.length) return null
+    return { symbol: b.symbol, series: b.series.map((p) => ({ t: p.t, value: p.value })) }
+  }, [navSeries])
+
   return useMemo(
-    () => assemble(live ?? null, liveTrades ?? null, ticker ?? null, minutes !== null ? (navSeries ?? null) : null),
-    [live, liveTrades, ticker, navSeries, minutes],
+    () =>
+      assemble(
+        live ?? null,
+        liveTrades ?? null,
+        ticker ?? null,
+        minutes !== null ? (navSeries?.pods ?? null) : null,
+        minutes !== null ? benchmark : null,
+      ),
+    [live, liveTrades, ticker, navSeries, minutes, benchmark],
   )
 }
 

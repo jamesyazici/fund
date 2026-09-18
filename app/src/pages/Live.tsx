@@ -172,7 +172,7 @@ export function Live() {
               </div>
             </div>
           </div>
-          <PortfolioChart pods={pods} visible={visible} height={440} />
+          <PortfolioChart pods={pods} visible={visible} height={440} benchmark={fund.benchmark} />
 
           {/* per-pod quick cards */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">

@@ -70,7 +70,7 @@ export function PodDetail() {
       {/* chart (this pod highlighted vs others faintly via single line) */}
       <div>
         <h2 className="label-strong mb-2">Account Value</h2>
-        <PortfolioChart pods={fund.pods} visible={[pod.id]} height={300} />
+        <PortfolioChart pods={fund.pods} visible={[pod.id]} height={300} benchmark={fund.benchmark} />
       </div>
 
       {/* traders */}

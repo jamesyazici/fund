@@ -600,9 +600,36 @@ def _minute_nav_for_pod(pod: dict, minutes: int) -> list[dict]:
     return series or db.get_nav_series(pod["id"])
 
 
+_BENCHMARK_SYMBOL = "SPY"
+
+
+def _benchmark_series(minutes: int) -> list[dict]:
+    """Raw SPY 1Min close series for the window — unnormalized. The frontend
+    scales it to whatever it's comparing against (one pod's allocated capital,
+    or the aggregate total), so this endpoint doesn't need to know that.
+
+    Uses the "__env__" pod sentinel like /public/ticker: market data doesn't
+    need pod-specific credentials, so this avoids coupling the benchmark to
+    any one pod's Alpaca account.
+    """
+    try:
+        start = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+        closes = alp.get_minute_closes("__env__", [_BENCHMARK_SYMBOL], start)
+        pts = closes.get(_BENCHMARK_SYMBOL) or []
+        if not pts:
+            # Market closed for the requested window — reach back to the most
+            # recent session, same fallback _minute_nav_for_pod uses.
+            week = alp.get_minute_closes("__env__", [_BENCHMARK_SYMBOL], datetime.now(timezone.utc) - timedelta(days=5))
+            pts = (week.get(_BENCHMARK_SYMBOL) or [])[-minutes:]
+        return [{"t": ts.isoformat(), "value": round(close, 4)} for ts, close in pts]
+    except Exception:
+        return []
+
+
 @app.get("/public/nav-series")
 def public_nav_series(minutes: int = 390):
-    """1-minute live account value of every pod, marked to 1Min market bars.
+    """1-minute live account value of every pod, marked to 1Min market bars,
+    plus a raw SPY benchmark series over the same window.
 
     Cached briefly server-side since minute bars only change once a minute.
     """
@@ -618,6 +645,7 @@ def public_nav_series(minutes: int = 390):
     payload = {
         "timeframe": "1Min",
         "as_of": datetime.now(timezone.utc).isoformat(),
+        "benchmark": {"symbol": _BENCHMARK_SYMBOL, "series": _benchmark_series(minutes)},
         "pods": [
             {"pod_id": p["id"], "name": p["name"], "series": _minute_nav_for_pod(p, minutes)}
             for p in pods

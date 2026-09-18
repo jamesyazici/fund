@@ -107,12 +107,18 @@ export interface TickerItem {
   changePct: number
 }
 
+export interface Benchmark {
+  symbol: string
+  series: NavPoint[] // raw price series — chart normalizes it to whatever it's compared against
+}
+
 export interface FundData {
   pods: Pod[]
   traders: Trader[]
   trades: Trade[]
   positions: Position[]
   ticker: TickerItem[]
+  benchmark: Benchmark | null
   isLive: boolean
   asOf: string
 }

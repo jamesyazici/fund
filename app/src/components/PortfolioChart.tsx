@@ -8,25 +8,46 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import type { Pod } from '@/data/types'
+import type { Benchmark, Pod } from '@/data/types'
 import { TINT_LINE } from '@/data/colors'
 import { formatCurrency } from '@/lib/formatters'
+
+const BENCHMARK_COLOR = '#8fd19e' // light green — distinct from every pod tint
 
 interface Props {
   pods: Pod[]
   // pod ids to render; if undefined, render all
   visible?: string[]
   height?: number
+  benchmark?: Benchmark | null
 }
 
-// Live account value of every pod on one graph, labelled by pod.
-export function PortfolioChart({ pods, visible, height = 420 }: Props) {
+// Live account value of every pod on one graph, labelled by pod, plus an
+// optional benchmark line (e.g. SPY) normalized to whatever's shown — the
+// combined allocated capital of the currently-visible pod(s) — so it reads
+// as "if this money had gone into the index instead."
+export function PortfolioChart({ pods, visible, height = 420, benchmark }: Props) {
   const shown = visible ? pods.filter((p) => visible.includes(p.id)) : pods
 
-  // merge every pod's 1-min series onto one timeline keyed by timestamp
+  const benchmarkStart = useMemo(
+    () => shown.reduce((a, p) => a + p.allocatedCapital, 0),
+    [shown],
+  )
+
+  // raw benchmark prices -> dollar-value line starting at benchmarkStart
+  const benchmarkByTime = useMemo(() => {
+    const series = benchmark?.series
+    if (!series?.length || benchmarkStart <= 0) return null
+    const first = series[0].value
+    if (!first) return null
+    return new Map(series.map((b) => [b.t, benchmarkStart * (b.value / first)]))
+  }, [benchmark, benchmarkStart])
+
+  // merge every pod's 1-min series (+ the benchmark) onto one timeline keyed by timestamp
   const data = useMemo(() => {
     const stamps = new Set<string>()
     shown.forEach((p) => p.nav.forEach((n) => stamps.add(n.t)))
+    benchmarkByTime?.forEach((_, t) => stamps.add(t))
     const byPod = new Map(shown.map((p) => [p.id, new Map(p.nav.map((n) => [n.t, n.value]))]))
     return [...stamps].sort().map((t) => {
       const row: Record<string, number | string> = { t }
@@ -34,9 +55,11 @@ export function PortfolioChart({ pods, visible, height = 420 }: Props) {
         const v = byPod.get(p.id)?.get(t)
         if (v != null) row[p.id] = v
       })
+      const b = benchmarkByTime?.get(t)
+      if (b != null) row.benchmark = b
       return row
     })
-  }, [shown])
+  }, [shown, benchmarkByTime])
 
   // intraday (1-min bars) → show times; longer history → show dates
   const intraday = useMemo(() => {
@@ -55,7 +78,7 @@ export function PortfolioChart({ pods, visible, height = 420 }: Props) {
   // hasn't moved much; adds 8% padding when the natural range is larger.
   const yDomain = useMemo((): [number, number] | ['auto', 'auto'] => {
     const vals = data.flatMap((row) =>
-      shown.map((p) => row[p.id]).filter((v): v is number => typeof v === 'number'),
+      [...shown.map((p) => row[p.id]), row.benchmark].filter((v): v is number => typeof v === 'number'),
     )
     if (!vals.length) return ['auto', 'auto']
     const dataMin = Math.min(...vals)
@@ -91,6 +114,15 @@ export function PortfolioChart({ pods, visible, height = 420 }: Props) {
             </span>
           </span>
         ))}
+        {benchmarkByTime && benchmark && (
+          <span className="flex items-center gap-2 text-2xs uppercase tracking-[0.1em]">
+            <span
+              className="inline-block h-2.5 w-2.5 border border-rule"
+              style={{ background: BENCHMARK_COLOR }}
+            />
+            <span className="font-semibold">{benchmark.symbol} (equiv.)</span>
+          </span>
+        )}
       </div>
       <div className="px-2 pb-2 pt-3" style={{ height }}>
         <ResponsiveContainer width="100%" height="100%">
@@ -123,10 +155,23 @@ export function PortfolioChart({ pods, visible, height = 420 }: Props) {
                 new Date(v).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
               }
               formatter={(value: number, name: string) => {
+                if (name === 'benchmark') return [formatCurrency(value), `${benchmark?.symbol ?? 'Benchmark'} (equiv.)`]
                 const pod = pods.find((p) => p.id === name)
                 return [formatCurrency(value), pod ? `${pod.code}: ${pod.name}` : name]
               }}
             />
+            {benchmarkByTime && (
+              <Line
+                type="monotone"
+                dataKey="benchmark"
+                stroke={BENCHMARK_COLOR}
+                strokeWidth={1.4}
+                strokeDasharray="4 3"
+                dot={false}
+                connectNulls
+                isAnimationActive={false}
+              />
+            )}
             {shown.map((p) => (
               <Line
                 key={p.id}

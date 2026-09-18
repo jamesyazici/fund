@@ -5,7 +5,7 @@ import { Money, NoData, Pct, PodGlyph } from '@/components/ui'
 import { formatCurrency } from '@/lib/formatters'
 
 export function Pods() {
-  const { pods } = useFund()
+  const { pods, benchmark } = useFund()
 
   if (pods.length === 0) {
     return (
@@ -26,7 +26,7 @@ export function Pods() {
         </p>
       </header>
 
-      <PortfolioChart pods={pods} height={320} />
+      <PortfolioChart pods={pods} height={320} benchmark={benchmark} />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         {pods.map((p) => (
