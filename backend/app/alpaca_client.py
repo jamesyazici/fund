@@ -114,11 +114,16 @@ def _resolve_creds(pod_id: str):
     if cached and cached[2] > now:
         return cached[0], cached[1]
 
-    creds = db.get_pod_alpaca(pod_id)
-    if creds and creds.get("api_key") and creds.get("api_secret"):
-        key, secret = creds["api_key"], creds["api_secret"]
-        _CREDS_CACHE[pod_id] = (key, secret, now + _CREDS_TTL)
-        return key, secret
+    # "__env__" is a sentinel for "skip the pod lookup, use the backend env
+    # key directly" (public ticker/benchmark endpoints). pod_alpaca_credentials
+    # .pod_id is a uuid column, so querying it with this non-UUID string would
+    # raise instead of just missing — skip the DB round-trip entirely for it.
+    if pod_id != "__env__":
+        creds = db.get_pod_alpaca(pod_id)
+        if creds and creds.get("api_key") and creds.get("api_secret"):
+            key, secret = creds["api_key"], creds["api_secret"]
+            _CREDS_CACHE[pod_id] = (key, secret, now + _CREDS_TTL)
+            return key, secret
     s = get_settings()
     if s.alpaca_api_key and s.alpaca_api_secret:
         # Env-level fallback: cache under a stable sentinel so we don't query
