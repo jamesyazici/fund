@@ -29,6 +29,13 @@ def _bearer(authorization: str) -> str:
     return authorization.split(" ", 1)[1].strip()
 
 
+def _active(trader: dict) -> dict:
+    """Refuse traders an admin has deleted (soft delete, see db.set_trader_deleted)."""
+    if trader.get("deleted_at"):
+        raise HTTPException(status_code=403, detail="This trader account has been deleted. Ask an admin to recover it.")
+    return trader
+
+
 def _profile(trader: dict) -> dict:
     return {
         "trader_id": trader["id"],
@@ -66,7 +73,7 @@ def _trader_from_session_token(token: str) -> dict:
     trader = db.get_trader_by_id(trader_id)
     if not trader:
         raise HTTPException(status_code=403, detail="Trader profile no longer exists.")
-    return trader
+    return _active(trader)
 
 
 def _trader_from_supabase_jwt(token: str) -> dict:
@@ -91,7 +98,7 @@ def _trader_from_supabase_jwt(token: str) -> dict:
             status_code=403,
             detail="No trader profile is linked to this login. Ask an admin to register you.",
         )
-    return trader
+    return _active(trader)
 
 
 def _api_key_hash(api_key: str) -> str:
@@ -114,6 +121,7 @@ def trader_from_api_key(api_key: str) -> dict:
     trader = row.get("traders") or db.get_trader_by_id(row["trader_id"])
     if not trader:
         raise HTTPException(status_code=403, detail="Trader profile no longer exists.")
+    _active(trader)
     db.mark_api_key_used(row["id"])
     return trader
 
@@ -179,6 +187,7 @@ def authenticate_with_supabase(email: str, password: str) -> dict:
             status_code=403,
             detail="No trader profile is linked to this login. Ask an admin to register you.",
         )
+    _active(trader)
 
     return {
         "token": issue_trader_session(trader["id"]),

@@ -27,11 +27,13 @@ def _now() -> str:
 
 
 # ── Traders & permissions ────────────────────────────────────────────────────
+# Trader reads select "*" so deleted_at (migration 007) comes back when the
+# column exists, and nothing breaks if the backend deploys before the migration.
 
 def get_trader_by_auth_id(auth_user_id: str):
     res = (
         sb().table("traders")
-        .select("id, display_name, is_admin, auth_user_id")
+        .select("*")
         .eq("auth_user_id", auth_user_id)
         .limit(1)
         .execute()
@@ -42,7 +44,7 @@ def get_trader_by_auth_id(auth_user_id: str):
 def get_trader_by_id(trader_id: str):
     res = (
         sb().table("traders")
-        .select("id, display_name, is_admin, auth_user_id")
+        .select("*")
         .eq("id", trader_id)
         .limit(1)
         .execute()
@@ -51,8 +53,14 @@ def get_trader_by_id(trader_id: str):
 
 
 def list_traders():
-    res = sb().table("traders").select("id, display_name, is_admin, auth_user_id, created_at").execute()
+    """All traders, deleted ones included (they carry a deleted_at timestamp)."""
+    res = sb().table("traders").select("*").order("created_at").execute()
     return res.data or []
+
+
+def set_trader_deleted(trader_id: str, deleted: bool) -> None:
+    """Soft-delete (or recover) a trader. Memberships and API keys are kept."""
+    sb().table("traders").update({"deleted_at": _now() if deleted else None}).eq("id", trader_id).execute()
 
 
 def list_trade_activity(trader_id: str = None, pod_id: str = None, limit: int = 100):
@@ -345,7 +353,7 @@ def revoke_trader_api_key(key_id: str) -> bool:
 def get_active_api_key_by_hash(key_hash: str):
     res = (
         sb().table("trader_api_keys")
-        .select("id, trader_id, traders(id, display_name, is_admin, auth_user_id)")
+        .select("id, trader_id, traders(*)")
         .eq("key_hash", key_hash)
         .is_("revoked_at", "null")
         .limit(1)
@@ -381,10 +389,12 @@ def list_trader_pods(trader_id: str):
 
 
 def list_memberships(pod_id: str = None):
-    q = sb().table("pod_memberships").select("pod_id, trader_id, role, traders(display_name)")
+    """Assignments of active traders. A deleted trader's rows are kept for recovery but hidden."""
+    q = sb().table("pod_memberships").select("pod_id, trader_id, role, traders(*)")
     if pod_id:
         q = q.eq("pod_id", pod_id)
-    return q.execute().data or []
+    rows = q.execute().data or []
+    return [r for r in rows if not (r.get("traders") or {}).get("deleted_at")]
 
 
 def list_pods_admin():

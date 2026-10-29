@@ -1118,6 +1118,42 @@ def admin_create_trader(req: CreateTraderRequest, actor: dict = Depends(get_admi
             "is_admin": trader["is_admin"], "email": req.email}
 
 
+def _get_trader_for_soft_delete(trader_id: str) -> dict:
+    trader = db.get_trader_by_id(trader_id)
+    if not trader:
+        raise HTTPException(404, "Trader not found.")
+    if "deleted_at" not in trader:
+        raise HTTPException(503, "Run app/supabase/007_trader_soft_delete.sql in Supabase first.")
+    return trader
+
+
+@app.delete("/admin/traders/{trader_id}")
+def admin_delete_trader(trader_id: str, actor: dict = Depends(get_admin_actor)):
+    """Soft delete: the trader is locked out but keeps their assignments, keys and history."""
+    trader = _get_trader_for_soft_delete(trader_id)
+    if trader["deleted_at"]:
+        raise HTTPException(400, "Trader is already deleted.")
+    if actor.get("id") == trader_id:
+        raise HTTPException(400, "You can't delete your own account.")
+    db.set_trader_deleted(trader_id, True)
+    db.write_audit_log("trader_deleted",
+                       f"Trader '{trader['display_name']}' deleted (recoverable)",
+                       actor=actor.get("email"), trader_id=trader_id)
+    return {"ok": True}
+
+
+@app.post("/admin/traders/{trader_id}/restore")
+def admin_restore_trader(trader_id: str, actor: dict = Depends(get_admin_actor)):
+    trader = _get_trader_for_soft_delete(trader_id)
+    if not trader["deleted_at"]:
+        raise HTTPException(400, "Trader is not deleted.")
+    db.set_trader_deleted(trader_id, False)
+    db.write_audit_log("trader_recovered",
+                       f"Trader '{trader['display_name']}' recovered",
+                       actor=actor.get("email"), trader_id=trader_id)
+    return {"ok": True}
+
+
 @app.get("/admin/traders/{trader_id}/api-keys")
 def admin_list_trader_api_keys(trader_id: str, actor: dict = Depends(get_admin_actor)):
     if not db.get_trader_by_id(trader_id):

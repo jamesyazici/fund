@@ -222,7 +222,15 @@
     <div class="panel">
       <h2>Trading roster</h2>
       <table id="tradersTable"><thead><tr>
-        <th>Name</th><th>Trader ID</th><th>Role</th>
+        <th>Name</th><th>Trader ID</th><th>Role</th><th></th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+
+    <div class="panel">
+      <h2>Deleted traders</h2>
+      <p class="muted" style="margin-top:0">Deleted traders can't log in or use their API keys. Recovering one restores their login, pod assignments and keys.</p>
+      <table id="deletedTradersTable"><thead><tr>
+        <th>Name</th><th>Trader ID</th><th>Deleted</th><th></th>
       </tr></thead><tbody></tbody></table>
     </div>
 
@@ -305,6 +313,8 @@
             <option value="alpaca_updated">Alpaca credentials</option>
             <option value="risk_updated">Risk settings</option>
             <option value="trader_created">Trader created</option>
+            <option value="trader_deleted">Trader deleted</option>
+            <option value="trader_recovered">Trader recovered</option>
             <option value="membership_added">Assignments added</option>
             <option value="membership_removed">Assignments removed</option>
             <option value="api_key_created">API keys created</option>
@@ -459,14 +469,25 @@ async function promptCapital(podId, name, current) {
 }
 
 async function loadTraders() {
-  traders = await api('GET', '/admin/traders');
+  const all = await api('GET', '/admin/traders');
+  traders = all.filter(t => !t.deleted_at);
+  const deleted = all.filter(t => t.deleted_at);
   document.getElementById('statTraders').textContent = traders.length;
   const tb = document.querySelector('#tradersTable tbody'); tb.innerHTML = '';
   for (const t of traders) {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${t.display_name}</td><td class="muted">${t.id}</td>
-      <td>${t.is_admin ? '<span class="tag admin">admin</span>' : '<span class="tag">trader</span>'}</td>`;
+      <td>${t.is_admin ? '<span class="tag admin">admin</span>' : '<span class="tag">trader</span>'}</td>
+      <td><button class="danger" onclick="deleteTrader('${t.id}')">Delete</button></td>`;
     tb.appendChild(tr);
+  }
+  const dtb = document.querySelector('#deletedTradersTable tbody'); dtb.innerHTML = '';
+  if (!deleted.length) dtb.innerHTML = '<tr><td class="muted" colspan="4">No deleted traders.</td></tr>';
+  for (const t of deleted) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${t.display_name}</td><td class="muted">${t.id}</td><td>${fmtDate(t.deleted_at)}</td>
+      <td><button class="secondary" onclick="recoverTrader('${t.id}')">Recover</button></td>`;
+    dtb.appendChild(tr);
   }
   document.getElementById('mTrader').innerHTML =
     traders.map(t => `<option value="${t.id}">${t.display_name}</option>`).join('');
@@ -474,9 +495,29 @@ async function loadTraders() {
   const selected = keyTrader.value;
   keyTrader.innerHTML = traders.map(t => `<option value="${t.id}">${t.display_name}</option>`).join('');
   if (selected && traders.some(t => t.id === selected)) keyTrader.value = selected;
+  // Deleted traders stay in the activity filter: their trade history is kept.
   document.getElementById('tradeTrader').innerHTML =
-    '<option value="">All traders</option>' + traders.map(t => `<option value="${t.id}">${t.display_name}</option>`).join('');
+    '<option value="">All traders</option>' + all.map(t =>
+      `<option value="${t.id}">${t.display_name}${t.deleted_at ? ' (deleted)' : ''}</option>`).join('');
   loadApiKeys();
+}
+
+async function deleteTrader(traderId) {
+  const t = traders.find(x => x.id === traderId);
+  if (!t || !confirm(`Delete trader "${t.display_name}"?\n\nThey won't be able to log in or use their API keys. Their pod assignments, keys and trade history are kept, and you can recover them from "Deleted traders".`)) return;
+  try {
+    await api('DELETE', `/admin/traders/${traderId}`);
+    toast(`"${t.display_name}" deleted`);
+    await loadTraders(); loadMemberships();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function recoverTrader(traderId) {
+  try {
+    await api('POST', `/admin/traders/${traderId}/restore`);
+    toast('Trader recovered');
+    await loadTraders(); loadMemberships();
+  } catch (e) { toast(e.message, 'err'); }
 }
 
 async function createTrader() {
