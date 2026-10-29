@@ -6,6 +6,7 @@ rqfc API keys, or legacy Supabase JWTs.
 """
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 import json
 import logging
@@ -19,6 +20,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from . import alpaca_client as alp
 from . import db, metrics
 from . import accounting
+from . import fill_poller
 from .auth import (
     api_key_prefix,
     authenticate_with_supabase,
@@ -39,12 +41,19 @@ from .schemas import (
 PORTAL_HTML = Path(__file__).parent / "portal" / "index.html"
 logger = logging.getLogger(__name__)
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    fill_poller.start()
+    yield
+
+
 app = FastAPI(
     title="RQFC Trading Backend",
     version="1.0.0",
     docs_url=None,
     redoc_url=None,
     openapi_url=None,
+    lifespan=lifespan,
 )
 
 app.add_middleware(

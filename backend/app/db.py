@@ -115,7 +115,9 @@ def list_public_trades(pod_id: str = None, limit: int = 100) -> list[dict]:
             "id": r.get("id"),
             "pod_id": r.get("pod_id"),
             "pod_name": (r.get("pods") or {}).get("name"),
-            "trader": (r.get("traders") or {}).get("display_name"),
+            # No trader means the fill poller logged it: an order placed straight
+            # at Alpaca, e.g. by a QuantConnect strategy.
+            "trader": (r.get("traders") or {}).get("display_name") or (None if r.get("trader_id") else "Strategy"),
             "trader_id": r.get("trader_id"),
             "symbol": r.get("symbol"),
             "side": r.get("side"),
@@ -565,6 +567,23 @@ def log_trade(pod_id, trader_id, trade: dict) -> None:
             )
         }
         sb().table("trades").insert(legacy).execute()
+
+
+def existing_alpaca_order_ids(order_ids: list[str]) -> set[str]:
+    """Which of these Alpaca order ids already have a `trades` row."""
+    found: set[str] = set()
+    for i in range(0, len(order_ids), 100):  # keep the URL short
+        res = sb().table("trades").select("alpaca_order_id").in_("alpaca_order_id", order_ids[i:i + 100]).execute()
+        found.update(r["alpaca_order_id"] for r in res.data or [])
+    return found
+
+
+def insert_synced_trades(pod_id, rows: list) -> None:
+    """Fill-poller rows: no trader, and never overwrite an order already logged."""
+    if not rows:
+        return
+    payload = [{"pod_id": pod_id, "trader_id": None, **row} for row in rows]
+    sb().table("trades").upsert(payload, on_conflict="alpaca_order_id", ignore_duplicates=True).execute()
 
 
 def replace_positions(pod_id, rows: list) -> None:

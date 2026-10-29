@@ -355,6 +355,21 @@ def get_orders(pod_id: str, status: str = "open") -> list[dict]:
     return rows
 
 
+def get_closed_orders(pod_id: str, after: datetime) -> list:
+    """Closed Alpaca orders submitted after `after`, as SDK objects, with bracket
+    and OCO legs flattened in (they come nested under their parent order)."""
+    from alpaca.trading.requests import GetOrdersRequest
+    from alpaca.trading.enums import QueryOrderStatus
+    parents = trading_client(pod_id).get_orders(GetOrdersRequest(
+        status=QueryOrderStatus.CLOSED, after=after, limit=500, nested=True,
+    ))
+    orders = {}
+    for parent in parents:
+        for o in [parent, *(getattr(parent, "legs", None) or [])]:
+            orders[str(o.id)] = o
+    return list(orders.values())
+
+
 # ── Account, positions, history ──────────────────────────────────────────────
 
 def get_account(pod_id: str) -> dict:
