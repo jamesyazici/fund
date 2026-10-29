@@ -616,6 +616,23 @@ def upsert_metrics(pod_id, row: dict) -> None:
     sb().table("metrics").upsert({"pod_id": pod_id, **row}, on_conflict="pod_id,as_of_date").execute()
 
 
+def get_latest_sharpe(pod_id: str) -> float | None:
+    """Sharpe from the pod's newest metrics row (daily returns, see metrics.py)."""
+    try:
+        res = (
+            sb().table("metrics")
+            .select("sharpe")
+            .eq("pod_id", pod_id)
+            .order("as_of_date", desc=True)
+            .limit(1)
+            .execute()
+        )
+    except Exception:
+        return None
+    sharpe = res.data[0].get("sharpe") if res.data else None
+    return float(sharpe) if sharpe is not None else None
+
+
 def count_trades(pod_id) -> int:
     return sb().table("trades").select("id", count="exact").eq("pod_id", pod_id).execute().count or 0
 

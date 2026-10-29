@@ -6,7 +6,7 @@ import { TradesFeed } from '@/components/TradesFeed'
 import { PositionCard, PositionsSummary } from '@/components/Positions'
 import { Money, NoData, Pct, PodGlyph } from '@/components/ui'
 import { cn } from '@/lib/cn'
-import { formatCurrency } from '@/lib/formatters'
+import { formatCurrency, formatNumber } from '@/lib/formatters'
 
 type Tab = 'trades' | 'positions'
 
@@ -149,12 +149,11 @@ export function Live() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h1 className="font-serif text-2xl">{headline.name}</h1>
             <div className="flex items-center gap-3">
-              {view !== 'all' && (() => {
-                const sharpe = pods.find((p) => p.id === view)?.sharpe
-                return sharpe != null
-                  ? <span className="label">Sharpe&nbsp;<span className="num text-ink">{sharpe.toFixed(3)}</span></span>
-                  : null
-              })()}
+              {view !== 'all' && (
+                <span className="label" title="Annualized, from daily returns. Shows — until a pod has 20 trading days and takes real risk.">
+                  Sharpe&nbsp;<span className="num text-ink">{formatNumber(pods.find((p) => p.id === view)?.sharpe)}</span>
+                </span>
+              )}
               <div className="flex items-center gap-1">
               <span className="label mr-1">Window</span>
               {WINDOWS.map((w) => (

@@ -5,7 +5,7 @@ import { PortfolioChart } from '@/components/PortfolioChart'
 import { TradesTable } from '@/components/TradesFeed'
 import { PositionsTable } from '@/components/Positions'
 import { Money, Pct, PodGlyph } from '@/components/ui'
-import { formatCurrency } from '@/lib/formatters'
+import { formatCurrency, formatNumber } from '@/lib/formatters'
 
 export function PodDetail() {
   const { id } = useParams()
@@ -57,7 +57,7 @@ export function PodDetail() {
         <Cell label="Cash">{formatCurrency(pod.cash)}</Cell>
         <Cell label="Fees">{formatCurrency(pod.fees)}</Cell>
         <Cell label="Allocated">{formatCurrency(pod.allocatedCapital)}</Cell>
-        <Cell label="Sharpe">{pod.sharpe.toFixed(2)}</Cell>
+        <Cell label="Sharpe">{formatNumber(pod.sharpe)}</Cell>
         <Cell label="Max Drawdown"><span className="neg">{(pod.maxDrawdown * 100).toFixed(1)}%</span></Cell>
         <Cell label="Win Rate">{(pod.winRate * 100).toFixed(0)}%</Cell>
         <Cell label="Avg Leverage">{pod.avgLeverage.toFixed(2)}x</Cell>

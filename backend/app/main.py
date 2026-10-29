@@ -18,9 +18,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 
 from . import alpaca_client as alp
-from . import db, metrics
+from . import db
 from . import accounting
-from . import fill_poller
+from . import daily_metrics, fill_poller
 from .auth import (
     api_key_prefix,
     authenticate_with_supabase,
@@ -44,6 +44,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     fill_poller.start()
+    daily_metrics.start()
     yield
 
 
@@ -482,6 +483,7 @@ def _live_pod_snapshot(pod: dict) -> dict:
         "total_return": None,
         "members": db.list_pod_members(pod["id"]),
         "nav_series": db.get_nav_series(pod["id"]),
+        "sharpe": db.get_latest_sharpe(pod["id"]),
         "error": None,
     }
     try:
@@ -910,14 +912,8 @@ def sync_pod(pod_id: str, trader: dict = Depends(get_current_trader)):
     positions = alp.get_positions(pod_id)
     db.replace_positions(pod_id, positions)
 
-    nav_rows = alp.get_nav_history(pod_id)
-    db.upsert_nav(pod_id, nav_rows)
-
-    m = metrics.compute(nav_rows, trade_count=db.count_trades(pod_id))
-    if m:
-        db.upsert_metrics(pod_id, m)
-
-    return {"positions": len(positions), "nav_days": len(nav_rows), "metrics": bool(m)}
+    nav_days, m = daily_metrics.refresh_pod(pod_id)
+    return {"positions": len(positions), "nav_days": nav_days, "metrics": bool(m)}
 
 
 # ── Strategy run logging ───────────────────────────────────────────────────────

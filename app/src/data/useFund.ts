@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { backendUrl } from '@/lib/backend'
-import { maxDrawdownOf, round, sharpeOf } from './compute'
+import { maxDrawdownOf, round } from './compute'
 import type { Benchmark, FundData, NavPoint, Pod, Position, Tint, TickerItem, Trade, Trader } from './types'
 
 const TINTS: Tint[] = ['p3', 'p1', 'p5', 'p4', 'p2', 'p6']
@@ -48,6 +48,7 @@ interface LiveSnapshot {
   total_return?: number | null
   members?: LiveMember[]
   nav_series?: { t: string; value: number }[]
+  sharpe?: number | null
   positions?: LivePosition[]
 }
 interface LiveTrade {
@@ -208,7 +209,7 @@ function assemble(
       totalReturn: s.total_return ?? (allocated ? totalPnl / allocated : 0),
       dayReturn: s.session_return ?? 0,
       liveGain: s.live_gain ?? accountValue - allocated,
-      sharpe: sharpeOf(nav),
+      sharpe: s.sharpe ?? null,
       maxDrawdown: maxDrawdownOf(nav),
       winRate: 0,
       biggestWin: 0,

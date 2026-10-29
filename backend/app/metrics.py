@@ -1,13 +1,20 @@
-"""Pod-level risk/return metrics, computed from a NAV series."""
+"""Pod-level risk/return metrics, computed from a daily NAV series."""
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
 
+# Sharpe and Sortino are null (shown as "—") until they mean something:
+# - fewer than this many daily returns is too little history;
+MIN_DAILY_RETURNS = 20
+# - below this annualized volatility the pod is essentially cash, and the
+#   ratio is dominated by the risk-free rate divided by near-zero noise.
+MIN_ANNUAL_VOL = 0.01
 
-def _sharpe(returns: pd.Series, rf: float = 0.05) -> float:
+
+def _sharpe(returns: pd.Series, rf: float = 0.05) -> float | None:
     if len(returns) < 2 or returns.std() == 0:
-        return 0.0
+        return None
     excess = returns - rf / 252
     return round(float((excess.mean() / excess.std()) * np.sqrt(252)), 4)
 
@@ -45,11 +52,13 @@ def _sanitize(v):
 
 def compute(nav_rows: list, rf: float = 0.05, trade_count: int = 0) -> dict | None:
     """nav_rows: list of {date, nav, daily_return}. Returns a metrics dict."""
+    nav_rows = [r for r in nav_rows if float(r["nav"]) > 0]  # days before the account was funded
     if not nav_rows:
         return None
     nav = pd.Series([float(r["nav"]) for r in nav_rows])
     ret = nav.pct_change().dropna()
     n = len(ret)
+    meaningful = n >= MIN_DAILY_RETURNS and _volatility(ret) >= MIN_ANNUAL_VOL
 
     start, end = float(nav.iloc[0]), float(nav.iloc[-1])
     cum_return = (end / start - 1) if start else 0.0
@@ -64,8 +73,8 @@ def compute(nav_rows: list, rf: float = 0.05, trade_count: int = 0) -> dict | No
         "cumulative_return": round(cum_return, 6),
         "annualized_return": round(ann_return, 6),
         "volatility":        _volatility(ret),
-        "sharpe":            _sharpe(ret, rf),
-        "sortino":           _sortino(ret, rf),
+        "sharpe":            _sharpe(ret, rf) if meaningful else None,
+        "sortino":           _sortino(ret, rf) if meaningful else None,
         "beta":              None,
         "alpha":             None,
         "max_drawdown":      max_dd,

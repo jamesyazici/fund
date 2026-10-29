@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { useFund } from '@/data/useFund'
 import { PortfolioChart } from '@/components/PortfolioChart'
 import { Money, NoData, Pct, PodGlyph } from '@/components/ui'
-import { formatCurrency } from '@/lib/formatters'
+import { formatCurrency, formatNumber } from '@/lib/formatters'
 
 export function Pods() {
   const { pods, benchmark } = useFund()
@@ -44,7 +44,7 @@ export function Pods() {
               <KV k="Total Return" v={<Pct value={p.totalReturn} />} />
               <KV k="Realized" v={<Money value={p.realizedPnl} signed />} />
               <KV k="Unrealized" v={<Money value={p.unrealizedPnl} signed />} />
-              <KV k="Sharpe" v={p.sharpe.toFixed(2)} />
+              <KV k="Sharpe" v={formatNumber(p.sharpe)} />
               <KV k="Traders" v={String(p.traders.length)} />
             </div>
           </Link>

@@ -1,6 +1,6 @@
 import type { Pod, Position } from '@/data/types'
 import { Money, SideBadge } from './ui'
-import { formatCurrency, formatDateTime } from '@/lib/formatters'
+import { formatCurrency, formatDateTime, formatNumber } from '@/lib/formatters'
 import { cn } from '@/lib/cn'
 
 // Per-position card for the live sidebar "Positions" tab.
@@ -47,7 +47,7 @@ function Row({ k, v }: { k: string; v: string }) {
 // Pod summary strip: Sharpe, unrealized, net P&L (live sidebar header).
 export function PositionsSummary({ pod }: { pod: Pod }) {
   const cells: [string, React.ReactNode][] = [
-    ['Sharpe', <span className="num">{pod.sharpe.toFixed(2)}</span>],
+    ['Sharpe', <span className="num">{formatNumber(pod.sharpe)}</span>],
     ['Unrealized', <Money value={pod.unrealizedPnl} signed />],
     ['Net P&L', <Money value={pod.totalPnl} signed />],
     ['Win Rate', <span className="num">{(pod.winRate * 100).toFixed(0)}%</span>],

@@ -87,7 +87,7 @@ export interface Pod {
   liveGain: number
 
   // risk / performance metrics
-  sharpe: number
+  sharpe: number | null // from the backend's daily metrics; null until meaningful
   maxDrawdown: number // fraction (negative)
   winRate: number // fraction
   biggestWin: number

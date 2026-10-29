@@ -19,7 +19,7 @@ export const METRIC_META: Record<
   },
   sharpe: {
     label: 'Sharpe Ratio',
-    description: '(Mean daily excess return) / σ × √252.',
+    description: '(Mean daily excess return) / σ × √252. Shown once a pod has 20 trading days and takes real risk.',
     format: 'ratio',
   },
   sortino: {

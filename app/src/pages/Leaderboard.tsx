@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useFund } from '@/data/useFund'
 import { Money, NoData, Pct, PodGlyph } from '@/components/ui'
-import { formatCurrency } from '@/lib/formatters'
+import { formatCurrency, formatNumber } from '@/lib/formatters'
 import { cn } from '@/lib/cn'
 
 type SortKey = 'livePnl' | 'realizedPnl' | 'biggestWin' | 'biggestLoss' | 'maxDrawdown' | 'winRate' | 'trades'
@@ -116,7 +116,7 @@ export function Leaderboard() {
                 <div className="mt-3 grid grid-cols-2 gap-2 text-2xs">
                   <KV k="Account" v={formatCurrency(p.accountValue)} />
                   <KV k="Net P&L" v={<Money value={p.totalPnl} signed />} />
-                  <KV k="Sharpe" v={p.sharpe.toFixed(2)} />
+                  <KV k="Sharpe" v={formatNumber(p.sharpe)} />
                   <KV k="Max DD" v={<span className="neg">{(p.maxDrawdown * 100).toFixed(1)}%</span>} />
                 </div>
               </Link>

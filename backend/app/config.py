@@ -49,6 +49,9 @@ class Settings:
         # How often the fill poller copies Alpaca orders the backend didn't
         # place (e.g. QuantConnect strategies) into trades. 0 turns it off.
         self.fill_poll_seconds = int(os.environ.get("FILL_POLL_SECONDS", "15"))
+        # How often daily NAV history and metrics (Sharpe etc.) are refreshed
+        # from Alpaca. 0 turns it off.
+        self.daily_metrics_seconds = int(os.environ.get("DAILY_METRICS_SECONDS", "3600"))
 
         # Shared secret the VM runner uses to call /internal/* endpoints.
         # Blank means those endpoints refuse every request (fail closed).
